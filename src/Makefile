@@ -1,7 +1,7 @@
 THIS_MAKEFILE := $(lastword $(MAKEFILE_LIST))
 
 -include ../config.mk
-TOOLSUB ?= $(HOME)/work/devel/toolsub.git
+TOOLSUB ?= $(dir $(realpath $(THIS_MAKEFILE)))/../contrib/toolsub
 
 .PHONY: default
 default: dbgcov dbgcov-tool
