@@ -1,7 +1,9 @@
 THIS_MAKEFILE := $(lastword $(MAKEFILE_LIST))
-DBGCOV_PREFIX ?= $(realpath $(dir $(THIS_MAKEFILE))/..)
+DBGCOV_PREFIX ?= $(realpath $(dir $(realpath $(THIS_MAKEFILE)))/..)
+$(info DBGCOV_PREFIX is $(DBGCOV_PREFIX))
 
 -include $(DBGCOV_PREFIX)/config.mk
+TOOLSUB ?= $(DBGCOV_PREFIX)/contrib/toolsub
 export TOOLSUB
 
 # HACK: for now, force C++11 and C99
