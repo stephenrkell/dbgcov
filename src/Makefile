@@ -9,7 +9,6 @@ default: dbgcov dbgcov-tool
 CXX_OBJS := $(patsubst %.cpp,%.o,$(wildcard *.cpp))
 
 dbgcov-tool: LDLIBS += \
-        -Wl,--start-group \
         -lclangAST \
         -lclangASTMatchers \
         -lclangAnalysis \
@@ -32,8 +31,7 @@ dbgcov-tool: LDLIBS += \
         -lclangSerialization \
         -lclangToolingCore \
         -lclangTooling \
-        -lclangFormat \
-        -Wl,--end-group
+        -lclangFormat
 
 LLVM_CONFIG ?= llvm-config-8
 
