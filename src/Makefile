@@ -54,7 +54,7 @@ OCAMLFLAGS += -I $(TOOLSUB)/wrapper/lib
 vpath %.cmx $(TOOLSUB)/wrapper/lib
 vpath %.o $(TOOLSUB)/wrapper/lib
 
-OCAMLLIBS := str.cmxa nums.cmxa unix.cmxa
+OCAMLLIBS := str.cmxa unix.cmxa
 
 dbgcov: compiler_args.cmx dbgcov.ml mkstemp_stubs.o
 	$(OCAMLFIND) ocamlopt -o "$@" $(OCAMLOPTFLAGS) $(OCAMLFLAGS) $(OCAMLLIBS) $+ -linkpkg -linkall
