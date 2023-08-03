@@ -20,6 +20,7 @@ dbgcov-tool: LDLIBS += \
         -lclangLex \
         -lclangParse \
         -lclangSema \
+        -lclangSupport \
         -lclangEdit \
         -lclangRewrite \
         -lclangRewriteFrontend \
