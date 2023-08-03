@@ -6,6 +6,8 @@ $(info DBGCOV_PREFIX is $(DBGCOV_PREFIX))
 TOOLSUB ?= $(DBGCOV_PREFIX)/contrib/toolsub
 export TOOLSUB
 
+-include $(dir $(realpath $(THIS_MAKEFILE)))/config.mk
+
 # HACK: for now, force C++11 and C99
 BASIC_CXXFLAGS += -std=c++11 -save-temps
 BASIC_CFLAGS += -std=c99 -save-temps
