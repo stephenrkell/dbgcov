@@ -45,3 +45,6 @@ CFLAGS += `$(DBGCOV_PREFIX)/bin/dbgcov-cflags` $(BASIC_CFLAGS)
 %.o: %.c
 %: %.o
 %.o: %.s
+
+clean:
+	rm -f *.dbgcov *.i
