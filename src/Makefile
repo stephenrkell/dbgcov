@@ -40,7 +40,7 @@ LLVM_CONFIG ?= llvm-config-8
 $(CXX_OBJS): CXXFLAGS += -std=c++14 -fPIC -g `$(LLVM_CONFIG) --cxxflags` -UNDEBUG
 
 dbgcov-tool: LDFLAGS += `$(LLVM_CONFIG) --ldflags`
-dbgcov-tool: LDLIBS += `$(LLVM_CONFIG) --libs`
+dbgcov-tool: LDLIBS += `$(LLVM_CONFIG) --libs` `$(LLVM_CONFIG) --system-libs`
 dbgcov-tool: main.o
 	$(CXX) -o $@ $+ $(LDFLAGS) $(LDLIBS)
 
