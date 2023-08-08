@@ -9,7 +9,6 @@ default: dbgcov dbgcov-tool
 CXX_OBJS := $(patsubst %.cpp,%.o,$(wildcard *.cpp))
 
 dbgcov-tool: LDLIBS += \
-        -Wl,--start-group \
         -lclangAST \
         -lclangASTMatchers \
         -lclangAnalysis \
@@ -21,6 +20,7 @@ dbgcov-tool: LDLIBS += \
         -lclangLex \
         -lclangParse \
         -lclangSema \
+        -lclangSupport \
         -lclangEdit \
         -lclangRewrite \
         -lclangRewriteFrontend \
@@ -32,8 +32,7 @@ dbgcov-tool: LDLIBS += \
         -lclangSerialization \
         -lclangToolingCore \
         -lclangTooling \
-        -lclangFormat \
-        -Wl,--end-group
+        -lclangFormat
 
 LLVM_CONFIG ?= llvm-config-8
 
@@ -41,7 +40,7 @@ LLVM_CONFIG ?= llvm-config-8
 $(CXX_OBJS): CXXFLAGS += -std=c++14 -fPIC -g `$(LLVM_CONFIG) --cxxflags` -UNDEBUG
 
 dbgcov-tool: LDFLAGS += `$(LLVM_CONFIG) --ldflags`
-dbgcov-tool: LDLIBS += `$(LLVM_CONFIG) --libs`
+dbgcov-tool: LDLIBS += `$(LLVM_CONFIG) --libs` `$(LLVM_CONFIG) --system-libs`
 dbgcov-tool: main.o
 	$(CXX) -o $@ $+ $(LDFLAGS) $(LDLIBS)
 
@@ -55,7 +54,7 @@ OCAMLFLAGS += -I $(TOOLSUB)/wrapper/lib
 vpath %.cmx $(TOOLSUB)/wrapper/lib
 vpath %.o $(TOOLSUB)/wrapper/lib
 
-OCAMLLIBS := str.cmxa nums.cmxa unix.cmxa
+OCAMLLIBS := str.cmxa unix.cmxa
 
 dbgcov: compiler_args.cmx dbgcov.ml mkstemp_stubs.o
 	$(OCAMLFIND) ocamlopt -o "$@" $(OCAMLOPTFLAGS) $(OCAMLFLAGS) $(OCAMLLIBS) $+ -linkpkg -linkall
