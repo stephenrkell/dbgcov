@@ -109,21 +109,64 @@ VAArgExpr
   v(GotoStmt) \
   v(ReturnStmt)
 
-#define VISITOR_METHOD_INNER(tok) \
-    s->getSourceRange().getBegin().print(llvm::outs(), TheRewriter.getSourceMgr()); \
+#define VISITOR_METHOD_PRINT(type, var) \
+    var->getSourceRange().getBegin().print(llvm::outs(), TheRewriter.getSourceMgr()); \
     llvm::outs() << "\t"; \
-    s->getSourceRange().getEnd().print(llvm::outs(), TheRewriter.getSourceMgr()); \
+    var->getSourceRange().getEnd().print(llvm::outs(), TheRewriter.getSourceMgr()); \
     llvm::outs() << "\t"; \
-    llvm::outs() << #tok; \
-    llvm::outs() << "\n"; \
-    return true; /* recurse */
+    llvm::outs() << #type; \
+    llvm::outs() << "\n";
 
-#define VISITOR_METHOD(tok) \
-  bool Visit ## tok (tok *s) { \
-    VISITOR_METHOD_INNER(tok) \
+#define VISITOR_METHOD(type) \
+  bool Visit ## type (type *s) { \
+    VISITOR_METHOD_PRINT(type, s) \
+    return true; \
   } /* end VisitExpr */
 
   STMTS_TO_PRINT(VISITOR_METHOD)
+
+  // Some nodes have non-body subexpressions
+
+  bool VisitDoStmt(DoStmt *s) {
+    if (const auto *cond = s->getCond()) {
+      VISITOR_METHOD_PRINT(DoStmt.Cond, cond)
+    }
+    return true;
+  }
+
+  bool VisitForStmt(ForStmt *s) {
+    if (const auto *init = s->getInit()) {
+      VISITOR_METHOD_PRINT(ForStmt.Init, init)
+    }
+    if (const auto *cond = s->getCond()) {
+      VISITOR_METHOD_PRINT(ForStmt.Cond, cond)
+    }
+    if (const auto *inc = s->getInc()) {
+      VISITOR_METHOD_PRINT(ForStmt.Inc, inc)
+    }
+    return true;
+  }
+
+  bool VisitIfStmt(IfStmt *s) {
+    if (const auto *cond = s->getCond()) {
+      VISITOR_METHOD_PRINT(IfStmt.Cond, cond)
+    }
+    return true;
+  }
+
+  bool VisitSwitchStmt(SwitchStmt *s) {
+    if (const auto *cond = s->getCond()) {
+      VISITOR_METHOD_PRINT(SwitchStmt.Cond, cond)
+    }
+    return true;
+  }
+
+  bool VisitWhileStmt(WhileStmt *s) {
+    if (const auto *cond = s->getCond()) {
+      VISITOR_METHOD_PRINT(WhileStmt.Cond, cond)
+    }
+    return true;
+  }
 
   // Some nodes require customised handling depending on the data they contain
 
@@ -136,7 +179,7 @@ VAArgExpr
       llvm::outs() << "\t";
       body->getBeginLoc().print(llvm::outs(), TheRewriter.getSourceMgr());
       llvm::outs() << "\t";
-      llvm::outs() << "FunctionPrologue";
+      llvm::outs() << "FunctionDecl.Prologue";
       llvm::outs() << "\n";
 
       // Epilogue
@@ -144,7 +187,7 @@ VAArgExpr
       llvm::outs() << "\t";
       body->getEndLoc().print(llvm::outs(), TheRewriter.getSourceMgr());
       llvm::outs() << "\t";
-      llvm::outs() << "FunctionEpilogue";
+      llvm::outs() << "FunctionDecl.Epilogue";
       llvm::outs() << "\n";
     }
     return true;
@@ -155,7 +198,8 @@ VAArgExpr
     // TODO: Check C++ default initialisation cases
     if (!s->isLocalVarDecl() || !s->hasInit())
       return true;
-    VISITOR_METHOD_INNER(VarDecl)
+    VISITOR_METHOD_PRINT(VarDecl, s)
+    return true;
   }
 
 private:
