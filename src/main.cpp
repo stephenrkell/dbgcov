@@ -19,6 +19,7 @@
 #include "clang/Tooling/Tooling.h"
 #include "clang/Tooling/CommonOptionsParser.h" // TODO: remove
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/FileSystem.h"
@@ -123,6 +124,29 @@ VAArgExpr
   STMTS_TO_PRINT(VISITOR_METHOD)
 
   // Some nodes require customised handling depending on the data they contain
+
+  bool VisitFunctionDecl(FunctionDecl *s) {
+    // We want to mark the opening and closing braces as having computation
+    // Debug info associates the function prologue / epilogue with these lines
+    if (const auto *body = dyn_cast_if_present<CompoundStmt>(s->getBody())) {
+      // Prologue
+      body->getBeginLoc().print(llvm::outs(), TheRewriter.getSourceMgr());
+      llvm::outs() << "\t";
+      body->getBeginLoc().print(llvm::outs(), TheRewriter.getSourceMgr());
+      llvm::outs() << "\t";
+      llvm::outs() << "FunctionPrologue";
+      llvm::outs() << "\n";
+
+      // Epilogue
+      body->getEndLoc().print(llvm::outs(), TheRewriter.getSourceMgr());
+      llvm::outs() << "\t";
+      body->getEndLoc().print(llvm::outs(), TheRewriter.getSourceMgr());
+      llvm::outs() << "\t";
+      llvm::outs() << "FunctionEpilogue";
+      llvm::outs() << "\n";
+    }
+    return true;
+  }
 
   bool VisitVarDecl(VarDecl *s) {
     // VarDecl has computation only when it has an initialiser
