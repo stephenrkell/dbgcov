@@ -7,6 +7,7 @@
 #include "clang/AST/AST.h"
 #include "clang/AST/ASTTypeTraits.h"
 #include "clang/AST/ASTConsumer.h"
+#include "clang/AST/Decl.h"
 #ifdef HAVE_CLANG_AST_PARENTMAPCONTEXT_H
 #include "clang/AST/ParentMapContext.h"
 #endif
@@ -40,7 +41,7 @@ using llvm::make_unique;
 class DbgCovASTVisitor : public RecursiveASTVisitor<DbgCovASTVisitor> {
 public:
   DbgCovASTVisitor(Rewriter &R, ASTContext &C) : TheRewriter(R), TheContext(C) {}
-  
+
   /* What can we "visit" using RecursiveASTVisitor?
      - attributes or specific classes thereof
      - statements or specific classes thereof -- expressions are a kind of statement!
@@ -104,17 +105,31 @@ VAArgExpr
   v(VAArgExpr) \
   v(ReturnStmt)
 
-#define VISITOR_METHOD(tok) \
-   bool Visit ## tok (tok *s) { \
+#define VISITOR_METHOD_INNER(tok) \
     s->getSourceRange().getBegin().print(llvm::outs(), TheRewriter.getSourceMgr()); \
     llvm::outs() << "\t"; \
     s->getSourceRange().getEnd().print(llvm::outs(), TheRewriter.getSourceMgr()); \
     llvm::outs() << "\t"; \
     llvm::outs() << #tok; \
     llvm::outs() << "\n"; \
-    return true; /* recurse */ \
+    return true; /* recurse */
+
+#define VISITOR_METHOD(tok) \
+  bool Visit ## tok (tok *s) { \
+    VISITOR_METHOD_INNER(tok) \
   } /* end VisitExpr */
+
   STMTS_TO_PRINT(VISITOR_METHOD)
+
+  // Some nodes require customised handling depending on the data they contain
+
+  bool VisitVarDecl(VarDecl *s) {
+    // VarDecl has computation only when it has an initialiser
+    // TODO: Check C++ default initialisation cases
+    if (!s->hasInit())
+      return true;
+    VISITOR_METHOD_INNER(VarDecl)
+  }
 
 private:
   Rewriter &TheRewriter;
