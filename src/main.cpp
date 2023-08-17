@@ -151,9 +151,9 @@ VAArgExpr
   }
 
   bool VisitVarDecl(VarDecl *s) {
-    // VarDecl has computation only when it has an initialiser
+    // VarDecl has computation only for locals with an initialiser
     // TODO: Check C++ default initialisation cases
-    if (!s->hasInit())
+    if (!s->isLocalVarDecl() || !s->hasInit())
       return true;
     VISITOR_METHOD_INNER(VarDecl)
   }
