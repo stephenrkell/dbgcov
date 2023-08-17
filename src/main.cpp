@@ -96,7 +96,6 @@ VAArgExpr
   v(CXXMemberCallExpr) \
   /* v(CastExpr) */ /* too many artificial instances of this */ \
   v(ChooseExpr) \
-  v(FullExpr) \
   v(GenericSelectionExpr) \
   v(LambdaExpr) \
   v(MaterializeTemporaryExpr) \
