@@ -92,8 +92,6 @@ VAArgExpr
   v(CXXPseudoDestructorExpr) \
   v(CXXScalarValueInitExpr) \
   v(CXXTypeidExpr) \
-  v(CallExpr) \
-  v(CXXMemberCallExpr) \
   /* v(CastExpr) */ /* too many artificial instances of this */ \
   v(ChooseExpr) \
   v(GenericSelectionExpr) \
@@ -169,6 +167,16 @@ VAArgExpr
   }
 
   // Some nodes require customised handling depending on the data they contain
+
+  bool VisitCallExpr(CallExpr *s) {
+    if (const auto *callee = s->getCallee()) {
+      VISITOR_METHOD_PRINT(CallExpr.Callee, callee)
+    }
+    // Arguments shouldn't be added at this level, as they may have a whole tree
+    // of multi-line computation, so we instead inspect them further by
+    // recursion
+    return true;
+  }
 
   bool VisitFunctionDecl(FunctionDecl *s) {
     // We want to mark the opening and closing braces as having computation
