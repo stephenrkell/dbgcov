@@ -99,6 +99,7 @@ VAArgExpr
   v(GenericSelectionExpr) \
   v(LambdaExpr) \
   v(MaterializeTemporaryExpr) \
+  v(MemberExpr) \
   v(OpaqueValueExpr) \
   v(PseudoObjectExpr) \
   v(UnaryOperator) \
