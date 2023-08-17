@@ -104,6 +104,9 @@ VAArgExpr
   v(PseudoObjectExpr) \
   v(UnaryOperator) \
   v(VAArgExpr) \
+  v(BreakStmt) \
+  v(ContinueStmt) \
+  v(GotoStmt) \
   v(ReturnStmt)
 
 #define VISITOR_METHOD_INNER(tok) \
