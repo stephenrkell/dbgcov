@@ -55,29 +55,6 @@ public:
      So let's focus on those... what kinds of expression are there? Expr is the base.
      Problem: the taxonomy of statements/expressions is liable to change
      across clang versions.
-     The following comes from version 8 (StmtNodes.inc) and is my filter on "might do computation".
-ArraySubscriptExpr
-BinaryOperator      (no 'Expr')
-CXXConstructExpr    (CXXTemporaryObjectExpr is a subclass)
-CXXDefaultArgExpr
-CXXFoldExpr         what is this?
-CXXInheritedCtorInitExpr
-CXXNewExpr
-CXXPseudoDestructorExpr
-CXXScalarValueInitExpr
-CXXTypeidExpr
-CallExpr
-CXXMemberCallExpr
-CastExpr            many subclasses, but even C-style cast in C++ might do pointer adjustment
-ChooseExpr
-FullExpr            what is this?
-GenericSelectionExpr  what is this?
-LambdaExpr
-MaterializeTemporaryExpr  what is this?
-OpaqueValueExpr           what is this?
-PseudoObjectExpr          what is this?
-UnaryOperator
-VAArgExpr
 
      Let's use a macroised list to generate our visitors
    */
