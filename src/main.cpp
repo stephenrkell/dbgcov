@@ -71,6 +71,7 @@ public:
   v(CXXTypeidExpr) \
   /* v(CastExpr) */ /* too many artificial instances of this */ \
   v(ChooseExpr) \
+  v(DeclRefExpr) /* may be too general, requires excluding constants */ \
   v(GenericSelectionExpr) \
   v(LambdaExpr) \
   v(MaterializeTemporaryExpr) \
@@ -152,6 +153,11 @@ public:
     // Arguments shouldn't be added at this level, as they may have a whole tree
     // of multi-line computation, so we instead inspect them further by
     // recursion
+    return true;
+  }
+
+  bool TraverseConstantExpr(ConstantExpr *s) {
+    // Skip constant expressions (e.g. case statements)
     return true;
   }
 
