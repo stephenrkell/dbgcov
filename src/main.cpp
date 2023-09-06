@@ -7,6 +7,7 @@
 #include "clang/AST/AST.h"
 #include "clang/AST/ASTTypeTraits.h"
 #include "clang/AST/ASTConsumer.h"
+#include "clang/AST/Decl.h"
 #ifdef HAVE_CLANG_AST_PARENTMAPCONTEXT_H
 #include "clang/AST/ParentMapContext.h"
 #endif
@@ -18,6 +19,7 @@
 #include "clang/Tooling/Tooling.h"
 #include "clang/Tooling/CommonOptionsParser.h" // TODO: remove
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/FileSystem.h"
@@ -40,7 +42,7 @@ using llvm::make_unique;
 class DbgCovASTVisitor : public RecursiveASTVisitor<DbgCovASTVisitor> {
 public:
   DbgCovASTVisitor(Rewriter &R, ASTContext &C) : TheRewriter(R), TheContext(C) {}
-  
+
   /* What can we "visit" using RecursiveASTVisitor?
      - attributes or specific classes thereof
      - statements or specific classes thereof -- expressions are a kind of statement!
@@ -53,29 +55,6 @@ public:
      So let's focus on those... what kinds of expression are there? Expr is the base.
      Problem: the taxonomy of statements/expressions is liable to change
      across clang versions.
-     The following comes from version 8 (StmtNodes.inc) and is my filter on "might do computation".
-ArraySubscriptExpr
-BinaryOperator      (no 'Expr')
-CXXConstructExpr    (CXXTemporaryObjectExpr is a subclass)
-CXXDefaultArgExpr
-CXXFoldExpr         what is this?
-CXXInheritedCtorInitExpr
-CXXNewExpr
-CXXPseudoDestructorExpr
-CXXScalarValueInitExpr
-CXXTypeidExpr
-CallExpr
-CXXMemberCallExpr
-CastExpr            many subclasses, but even C-style cast in C++ might do pointer adjustment
-ChooseExpr
-FullExpr            what is this?
-GenericSelectionExpr  what is this?
-LambdaExpr
-MaterializeTemporaryExpr  what is this?
-OpaqueValueExpr           what is this?
-PseudoObjectExpr          what is this?
-UnaryOperator
-VAArgExpr
 
      Let's use a macroised list to generate our visitors
    */
@@ -90,31 +69,129 @@ VAArgExpr
   v(CXXPseudoDestructorExpr) \
   v(CXXScalarValueInitExpr) \
   v(CXXTypeidExpr) \
-  v(CallExpr) \
-  v(CXXMemberCallExpr) \
   /* v(CastExpr) */ /* too many artificial instances of this */ \
   v(ChooseExpr) \
-  v(FullExpr) \
+  v(DeclRefExpr) /* may be too general, requires excluding constants */ \
   v(GenericSelectionExpr) \
   v(LambdaExpr) \
   v(MaterializeTemporaryExpr) \
+  v(MemberExpr) \
   v(OpaqueValueExpr) \
   v(PseudoObjectExpr) \
   v(UnaryOperator) \
   v(VAArgExpr) \
+  v(BreakStmt) \
+  v(ContinueStmt) \
+  v(GotoStmt) \
   v(ReturnStmt)
 
-#define VISITOR_METHOD(tok) \
-   bool Visit ## tok (tok *s) { \
-    s->getSourceRange().getBegin().print(llvm::outs(), TheRewriter.getSourceMgr()); \
+#define VISITOR_METHOD_PRINT(type, var) \
+    var->getSourceRange().getBegin().print(llvm::outs(), TheRewriter.getSourceMgr()); \
     llvm::outs() << "\t"; \
-    s->getSourceRange().getEnd().print(llvm::outs(), TheRewriter.getSourceMgr()); \
+    var->getSourceRange().getEnd().print(llvm::outs(), TheRewriter.getSourceMgr()); \
     llvm::outs() << "\t"; \
-    llvm::outs() << #tok; \
-    llvm::outs() << "\n"; \
-    return true; /* recurse */ \
+    llvm::outs() << #type; \
+    llvm::outs() << "\n";
+
+#define VISITOR_METHOD(type) \
+  bool Visit ## type (type *s) { \
+    VISITOR_METHOD_PRINT(type, s) \
+    return true; \
   } /* end VisitExpr */
+
   STMTS_TO_PRINT(VISITOR_METHOD)
+
+  // Some nodes have non-body subexpressions
+
+  bool VisitDoStmt(DoStmt *s) {
+    if (const auto *cond = s->getCond()) {
+      VISITOR_METHOD_PRINT(DoStmt.Cond, cond)
+    }
+    return true;
+  }
+
+  bool VisitForStmt(ForStmt *s) {
+    if (const auto *init = s->getInit()) {
+      VISITOR_METHOD_PRINT(ForStmt.Init, init)
+    }
+    if (const auto *cond = s->getCond()) {
+      VISITOR_METHOD_PRINT(ForStmt.Cond, cond)
+    }
+    if (const auto *inc = s->getInc()) {
+      VISITOR_METHOD_PRINT(ForStmt.Inc, inc)
+    }
+    return true;
+  }
+
+  bool VisitIfStmt(IfStmt *s) {
+    if (const auto *cond = s->getCond()) {
+      VISITOR_METHOD_PRINT(IfStmt.Cond, cond)
+    }
+    return true;
+  }
+
+  bool VisitSwitchStmt(SwitchStmt *s) {
+    if (const auto *cond = s->getCond()) {
+      VISITOR_METHOD_PRINT(SwitchStmt.Cond, cond)
+    }
+    return true;
+  }
+
+  bool VisitWhileStmt(WhileStmt *s) {
+    if (const auto *cond = s->getCond()) {
+      VISITOR_METHOD_PRINT(WhileStmt.Cond, cond)
+    }
+    return true;
+  }
+
+  // Some nodes require customised handling depending on the data they contain
+
+  bool VisitCallExpr(CallExpr *s) {
+    if (const auto *callee = s->getCallee()) {
+      VISITOR_METHOD_PRINT(CallExpr.Callee, callee)
+    }
+    // Arguments shouldn't be added at this level, as they may have a whole tree
+    // of multi-line computation, so we instead inspect them further by
+    // recursion
+    return true;
+  }
+
+  bool TraverseConstantExpr(ConstantExpr *s) {
+    // Skip constant expressions (e.g. case statements)
+    return true;
+  }
+
+  bool VisitFunctionDecl(FunctionDecl *s) {
+    // We want to mark the opening and closing braces as having computation
+    // Debug info associates the function prologue / epilogue with these lines
+    if (const auto *body = dyn_cast_if_present<CompoundStmt>(s->getBody())) {
+      // Prologue
+      body->getBeginLoc().print(llvm::outs(), TheRewriter.getSourceMgr());
+      llvm::outs() << "\t";
+      body->getBeginLoc().print(llvm::outs(), TheRewriter.getSourceMgr());
+      llvm::outs() << "\t";
+      llvm::outs() << "FunctionDecl.Prologue";
+      llvm::outs() << "\n";
+
+      // Epilogue
+      body->getEndLoc().print(llvm::outs(), TheRewriter.getSourceMgr());
+      llvm::outs() << "\t";
+      body->getEndLoc().print(llvm::outs(), TheRewriter.getSourceMgr());
+      llvm::outs() << "\t";
+      llvm::outs() << "FunctionDecl.Epilogue";
+      llvm::outs() << "\n";
+    }
+    return true;
+  }
+
+  bool VisitVarDecl(VarDecl *s) {
+    // VarDecl has computation only for locals with an initialiser
+    // TODO: Check C++ default initialisation cases
+    if (!s->isLocalVarDecl() || !s->hasInit())
+      return true;
+    VISITOR_METHOD_PRINT(VarDecl, s)
+    return true;
+  }
 
 private:
   Rewriter &TheRewriter;

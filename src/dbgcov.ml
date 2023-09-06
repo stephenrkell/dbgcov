@@ -38,7 +38,7 @@ let () =
                 else Filename.concat (Filename.dirname Sys.executable_name) "dbgcov-tool"
             in
             let the_output_file_name = the_input_file_name ^ ".dbgcov" in
-            let outfd = Unix.openfile the_output_file_name [O_RDWR; O_CREAT] 0o640 in
+            let outfd = Unix.openfile the_output_file_name [O_RDWR; O_CREAT; O_TRUNC] 0o640 in
                ((output_string Pervasives.stderr ("output should go to " ^ the_output_file_name ^ "\n");
                  Pervasives.flush Pervasives.stderr);
                  dup2 outfd stdout);
