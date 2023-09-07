@@ -207,8 +207,6 @@ public:
   // Override the method that gets called for each parsed top-level
   // declaration.
   bool HandleTopLevelDecl(DeclGroupRef DR) override {
-    unsigned count = 0;
-    SourceLocation lastSourceLoc;
     //llvm::errs() << "== Saw top-level decl\n";
     for (DeclGroupRef::iterator b = DR.begin(), e = DR.end(); b != e; ++b) {
       // HACK: to get parent info, I have to do this, but I have no idea why.
@@ -216,8 +214,6 @@ public:
       // Traverse the declaration using our AST visitor.
       Visitor.TraverseDecl(*b);
       //(*b)->dump();
-      ++count;
-      lastSourceLoc = (*b)->getSourceRange().getEnd();
     }
     return true;
   }
