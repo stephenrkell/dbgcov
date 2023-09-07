@@ -219,12 +219,6 @@ public:
       ++count;
       lastSourceLoc = (*b)->getSourceRange().getEnd();
     }
-
-    /* At some point, we reach the end of the file proper, and then start traversing
-     * the template instantiations that are implied by various other stuff and which
-     * clang has to elaborate in the AST for its own reasons. We have already
-     * rewritten the source code, so if we go on processing them, we will double-
-     * rewrite stuff which will be bad. How can we identify these instances? */
     return true;
   }
 
