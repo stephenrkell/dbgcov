@@ -12,6 +12,8 @@
 #include "clang/AST/ParentMapContext.h"
 #endif
 #include "clang/AST/RecursiveASTVisitor.h"
+#include "clang/Basic/SourceLocation.h"
+#include "clang/Basic/SourceManager.h"
 #include "clang/Frontend/ASTConsumers.h"
 #include "clang/Frontend/CompilerInstance.h"
 #include "clang/Frontend/FrontendActions.h"
@@ -39,6 +41,14 @@ using std::make_unique;
 using llvm::make_unique;
 #endif
 
+void PrintNextLine(raw_ostream &stream, const SourceLocation &sLoc,
+                   const SourceManager &mgr) {
+  assert(sLoc.isFileID() && "Non-file location");
+  PresumedLoc pLoc = mgr.getPresumedLoc(sLoc);
+  assert(pLoc.isValid() && "Invalid location");
+  stream << pLoc.getFilename() << ":" << pLoc.getLine() + 1 << ":" << 0;
+}
+
 class DbgCovASTVisitor : public RecursiveASTVisitor<DbgCovASTVisitor> {
 public:
   DbgCovASTVisitor(Rewriter &R, ASTContext &C) : TheRewriter(R), TheContext(C) {}
@@ -60,7 +70,6 @@ public:
    */
 #define STMTS_TO_PRINT(v) \
   v(ArraySubscriptExpr) \
-  v(BinaryOperator) \
   v(CXXConstructExpr) \
   v(CXXDefaultArgExpr) \
   v(CXXFoldExpr) \
@@ -86,9 +95,11 @@ public:
   v(ReturnStmt)
 
 #define VISITOR_METHOD_PRINT(type, var) \
-    var->getSourceRange().getBegin().print(llvm::outs(), TheRewriter.getSourceMgr()); \
+    var->getBeginLoc().print(llvm::outs(), TheRewriter.getSourceMgr()); \
     llvm::outs() << "\t"; \
-    var->getSourceRange().getEnd().print(llvm::outs(), TheRewriter.getSourceMgr()); \
+    var->getEndLoc().print(llvm::outs(), TheRewriter.getSourceMgr()); \
+    llvm::outs() << "\t"; \
+    llvm::outs() << "Computation"; \
     llvm::outs() << "\t"; \
     llvm::outs() << #type; \
     llvm::outs() << "\n";
@@ -146,6 +157,36 @@ public:
 
   // Some nodes require customised handling depending on the data they contain
 
+  bool VisitBinaryOperator(BinaryOperator *s) {
+    VISITOR_METHOD_PRINT(BinaryOperator, s)
+
+    if (!s->isAssignmentOp())
+      return true;
+
+    // Record variable definition region for assignment operations
+    const auto *declRefExpr = cast<DeclRefExpr>(s->getLHS());
+    const auto *namedDecl = cast<NamedDecl>(declRefExpr->getDecl());
+    // llvm::errs() << "Assignment for `" << namedDecl->getDeclName() << "`\n";
+    // s->dump();
+    auto &parentMap = TheContext.getParentMapContext();
+    auto *parentCompoundStmt = parentMap.getParents(*s)[0].get<CompoundStmt>();
+    // Only record definitions within a continuing CompoundStmt
+    if (!parentCompoundStmt)
+      return true;
+    // parentCompoundStmt->dump();
+
+    // Debug info typically reflects variables as defined on the line _after_
+    // assignment, so we print the next line here.
+    PrintNextLine(llvm::outs(), s->getEndLoc(), TheRewriter.getSourceMgr());
+    llvm::outs() << "\t";
+    parentCompoundStmt->getEndLoc().print(llvm::outs(), TheRewriter.getSourceMgr());
+    llvm::outs() << "\t"
+                 << "MustBeDefined"
+                 << "\t" << namedDecl->getDeclName() << "\n";
+
+    return true;
+  }
+
   bool VisitCallExpr(CallExpr *s) {
     if (const auto *callee = s->getCallee()) {
       VISITOR_METHOD_PRINT(CallExpr.Callee, callee)
@@ -170,6 +211,8 @@ public:
       llvm::outs() << "\t";
       body->getBeginLoc().print(llvm::outs(), TheRewriter.getSourceMgr());
       llvm::outs() << "\t";
+      llvm::outs() << "Computation";
+      llvm::outs() << "\t";
       llvm::outs() << "FunctionDecl.Prologue";
       llvm::outs() << "\n";
 
@@ -177,6 +220,8 @@ public:
       body->getEndLoc().print(llvm::outs(), TheRewriter.getSourceMgr());
       llvm::outs() << "\t";
       body->getEndLoc().print(llvm::outs(), TheRewriter.getSourceMgr());
+      llvm::outs() << "\t";
+      llvm::outs() << "Computation";
       llvm::outs() << "\t";
       llvm::outs() << "FunctionDecl.Epilogue";
       llvm::outs() << "\n";
@@ -190,6 +235,29 @@ public:
     if (!s->isLocalVarDecl() || !s->hasInit())
       return true;
     VISITOR_METHOD_PRINT(VarDecl, s)
+
+    // Record variable definition region
+    // llvm::errs() << "VD for `" << s->getName() << "`\n"
+    //              << "  parentStmt:\n";
+    auto &parentMap = TheContext.getParentMapContext();
+    auto *parentDeclStmt = parentMap.getParents(*s)[0].get<DeclStmt>();
+    // VarDecl with initialiser should be child of DeclStmt
+    assert(parentDeclStmt && "VarDecl not child of DeclStmt");
+    auto *parentCompoundStmt = parentMap.getParents(*parentDeclStmt)[0].get<CompoundStmt>();
+    // Only record definitions within a continuing CompoundStmt
+    if (!parentCompoundStmt)
+      return true;
+    // parentCompoundStmt->dump();
+
+    // Debug info typically reflects variables as defined on the line _after_
+    // assignment, so we print the next line here.
+    PrintNextLine(llvm::outs(), s->getEndLoc(), TheRewriter.getSourceMgr());
+    llvm::outs() << "\t";
+    parentCompoundStmt->getEndLoc().print(llvm::outs(), TheRewriter.getSourceMgr());
+    llvm::outs() << "\t"
+                 << "MustBeDefined"
+                 << "\t" << s->getName() << "\n";
+
     return true;
   }
 
@@ -211,9 +279,10 @@ public:
     for (DeclGroupRef::iterator b = DR.begin(), e = DR.end(); b != e; ++b) {
       // HACK: to get parent info, I have to do this, but I have no idea why.
       C.setTraversalScope({*b});
-      // Traverse the declaration using our AST visitor.
-      Visitor.TraverseDecl(*b);
       //(*b)->dump();
+
+      // Traverse the declaration using our AST visitor
+      Visitor.TraverseDecl(*b);
     }
     return true;
   }
