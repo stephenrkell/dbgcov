@@ -208,7 +208,7 @@ public:
     // s->dump();
     auto &parentMap = TheContext.getParentMapContext();
     auto *parentCompoundStmt = parentMap.getParents(*s)[0].get<CompoundStmt>();
-    // Only record definitions within a continuing CompoundStmt
+    // Only record definitions within a continuing `CompoundStmt`
     if (!parentCompoundStmt)
       return true;
     // parentCompoundStmt->dump();
@@ -270,7 +270,7 @@ public:
   }
 
   bool VisitVarDecl(VarDecl *s) {
-    // VarDecl has computation only for locals with an initialiser
+    // `VarDecl` has computation only for locals with an initialiser
     // TODO: Check C++ default initialisation cases
     if (!s->isLocalVarDecl() || !s->hasInit())
       return true;
@@ -281,7 +281,7 @@ public:
     //              << "  parentStmt:\n";
     auto &parentMap = TheContext.getParentMapContext();
     auto *parentDeclStmt = parentMap.getParents(*s)[0].get<DeclStmt>();
-    // VarDecl with initialiser should be child of DeclStmt
+    // `VarDecl` with initialiser should be child of `DeclStmt`
     assert(parentDeclStmt && "VarDecl not child of DeclStmt");
     auto *parentCompoundStmt = parentMap.getParents(*parentDeclStmt)[0].get<CompoundStmt>();
     // Only record definitions within a continuing CompoundStmt
