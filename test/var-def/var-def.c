@@ -12,6 +12,9 @@ int example(int n) {
   }
   if (cond(-n))
     b = -1; // initialised from single line block
-  delayed = 2; // defintion after declaration
+  delayed = 2; // definition after declaration
+  for (int i = 0; i < n; i++) { // block header definition
+    delayed++;
+  }
   return a + b;
 }

@@ -283,17 +283,18 @@ public:
     auto *parentDeclStmt = parentMap.getParents(*s)[0].get<DeclStmt>();
     // `VarDecl` with initialiser should be child of `DeclStmt`
     assert(parentDeclStmt && "VarDecl not child of DeclStmt");
-    auto *parentCompoundStmt = parentMap.getParents(*parentDeclStmt)[0].get<CompoundStmt>();
-    // Only record definitions within a continuing CompoundStmt
-    if (!parentCompoundStmt)
+    auto *parentStmt = parentMap.getParents(*parentDeclStmt)[0].get<Stmt>();
+    // Record definitions within any kind of `Stmt`, such as a continuing
+    // `CompoundStmt` or blocks with associated declarations (e.g. `ForStmt`)
+    if (!parentStmt)
       return true;
-    // parentCompoundStmt->dump();
+    // parentStmt->dump();
 
     // Debug info typically reflects variables as defined on the line _after_
     // assignment, so we print the next line here.
     PrintNextLine(llvm::outs(), s->getEndLoc(), TheRewriter.getSourceMgr());
     llvm::outs() << "\t";
-    parentCompoundStmt->getEndLoc().print(llvm::outs(), TheRewriter.getSourceMgr());
+    parentStmt->getEndLoc().print(llvm::outs(), TheRewriter.getSourceMgr());
     llvm::outs() << "\t"
                  << "MustBeDefined"
                  << "\t";
