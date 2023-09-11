@@ -83,8 +83,8 @@ void PrintExtendedName(raw_ostream &stream, const NamedDecl &decl,
   }
 
   stream << functionDecl->getDeclName() << ", " << decl.getDeclName()
-         << ", decl " << declLoc.getFilename() << ":" << declLoc.getLine()
-         << ", unit " << relMainFile;
+         << ", decl " << llvm::sys::path::filename(declLoc.getFilename()) << ":"
+         << declLoc.getLine() << ", unit " << relMainFile;
 }
 
 class DbgCovASTVisitor : public RecursiveASTVisitor<DbgCovASTVisitor> {
