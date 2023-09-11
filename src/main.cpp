@@ -12,6 +12,7 @@
 #include "clang/AST/ParentMapContext.h"
 #endif
 #include "clang/AST/RecursiveASTVisitor.h"
+#include "clang/Basic/FileEntry.h"
 #include "clang/Basic/SourceLocation.h"
 #include "clang/Basic/SourceManager.h"
 #include "clang/Frontend/ASTConsumers.h"
@@ -20,11 +21,13 @@
 #include "clang/Rewrite/Core/Rewriter.h"
 #include "clang/Tooling/Tooling.h"
 #include "clang/Tooling/CommonOptionsParser.h" // TODO: remove
+#include "llvm/ADT/SmallString.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/FileSystem.h"
+#include "llvm/Support/Path.h"
 #include "llvm/Support/Program.h"
 
 using namespace clang;
@@ -47,6 +50,41 @@ void PrintNextLine(raw_ostream &stream, const SourceLocation &sLoc,
   PresumedLoc pLoc = mgr.getPresumedLoc(sLoc);
   assert(pLoc.isValid() && "Invalid location");
   stream << pLoc.getFilename() << ":" << pLoc.getLine() + 1 << ":" << 0;
+}
+
+void PrintExtendedName(raw_ostream &stream, const NamedDecl &decl,
+                       const SourceManager &mgr) {
+  // The precise name format here must match `debuginfo-quality` so we can match
+  // data across both tools.
+  // <function>, <variable>, decl <file>:<line>, unit <file>
+  const auto *functionDecl = cast<FunctionDecl>(decl.getDeclContext());
+
+  PresumedLoc declLoc = mgr.getPresumedLoc(decl.getLocation());
+  assert(declLoc.isValid() && "Invalid decl location");
+
+  // This attempts to match the translation unit file name emitted in DWARF
+  // See `CGDebugInfo::createFile` for Clang's path handling approach
+  const auto mainFileID = mgr.getMainFileID();
+  const auto *mainFileEntry = mgr.getFileEntryForID(mainFileID);
+  SmallString<128> currentDirectory;
+  llvm::sys::fs::current_path(currentDirectory);
+  const auto mainFilePath = mainFileEntry->getName();
+  auto mainFileI = llvm::sys::path::begin(mainFilePath);
+  const auto mainFileE = llvm::sys::path::end(mainFilePath);
+  auto curDirI = llvm::sys::path::begin(currentDirectory);
+  const auto curDirE = llvm::sys::path::end(currentDirectory);
+  // Skip common path segments
+  while (curDirI != curDirE && *curDirI == *mainFileI)
+    ++curDirI, ++mainFileI;
+  SmallString<128> relMainFile;
+  while (mainFileI != mainFileE) {
+    llvm::sys::path::append(relMainFile, *mainFileI);
+    ++mainFileI;
+  }
+
+  stream << functionDecl->getDeclName() << ", " << decl.getDeclName()
+         << ", decl " << declLoc.getFilename() << ":" << declLoc.getLine()
+         << ", unit " << relMainFile;
 }
 
 class DbgCovASTVisitor : public RecursiveASTVisitor<DbgCovASTVisitor> {
@@ -182,7 +220,9 @@ public:
     parentCompoundStmt->getEndLoc().print(llvm::outs(), TheRewriter.getSourceMgr());
     llvm::outs() << "\t"
                  << "MustBeDefined"
-                 << "\t" << namedDecl->getDeclName() << "\n";
+                 << "\t";
+    PrintExtendedName(llvm::outs(), *namedDecl, TheRewriter.getSourceMgr());
+    llvm::outs() << "\n";
 
     return true;
   }
@@ -256,7 +296,9 @@ public:
     parentCompoundStmt->getEndLoc().print(llvm::outs(), TheRewriter.getSourceMgr());
     llvm::outs() << "\t"
                  << "MustBeDefined"
-                 << "\t" << s->getName() << "\n";
+                 << "\t";
+    PrintExtendedName(llvm::outs(), *s, TheRewriter.getSourceMgr());
+    llvm::outs() << "\n";
 
     return true;
   }
