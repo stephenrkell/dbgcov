@@ -1,7 +1,9 @@
 int cond(int n);
 void read(int x);
 
-int example(int n) {
+int example(
+  int n // parameter
+) {
   int delayed;
   int init = 0; // declaration with initialiser
   int a, b;

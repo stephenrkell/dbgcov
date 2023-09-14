@@ -265,6 +265,20 @@ public:
       llvm::outs() << "\t";
       llvm::outs() << "FunctionDecl.Epilogue";
       llvm::outs() << "\n";
+
+      // Record parameter definition region
+      for (const auto *param : s->parameters()) {
+        // Debug info typically reflects parameters as defined starting on the
+        // line with the opening brace of the function body.
+        body->getBeginLoc().print(llvm::outs(), TheRewriter.getSourceMgr());
+        llvm::outs() << "\t";
+        body->getEndLoc().print(llvm::outs(), TheRewriter.getSourceMgr());
+        llvm::outs() << "\t"
+                     << "MustBeDefined"
+                     << "\t";
+        PrintExtendedName(llvm::outs(), *param, TheRewriter.getSourceMgr());
+        llvm::outs() << "\n";
+      }
     }
     return true;
   }
