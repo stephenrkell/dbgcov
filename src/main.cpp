@@ -204,7 +204,11 @@ public:
       return true;
 
     // Record variable definition region for assignment operations
-    const auto *declRefExpr = cast<DeclRefExpr>(s->getLHS());
+    const auto *declRefExpr = dyn_cast<DeclRefExpr>(s->getLHS());
+    // Only examine direct variable assignments
+    // Skip array subscripts, member access, etc.
+    if (!declRefExpr)
+      return true;
     const auto *namedDecl = cast<NamedDecl>(declRefExpr->getDecl());
     // llvm::errs() << "Assignment for `" << namedDecl->getDeclName() << "`\n";
     // s->dump();
