@@ -81,6 +81,8 @@ void PrintExtendedName(raw_ostream &stream, const NamedDecl &decl,
     llvm::sys::path::append(relMainFile, *mainFileI);
     ++mainFileI;
   }
+  // Remove file extension to avoid `.i` vs. `.c` match failures
+  llvm::sys::path::replace_extension(relMainFile, "");
 
   stream << functionDecl->getDeclName() << ", " << decl.getDeclName()
          << ", decl " << llvm::sys::path::filename(declLoc.getFilename()) << ":"
