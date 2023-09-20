@@ -57,6 +57,7 @@ void PrintExtendedName(raw_ostream &stream, const NamedDecl &decl,
   // The precise name format here must match `debuginfo-quality` so we can match
   // data across both tools.
   // <function>, <variable>, decl <file>:<line>, unit <file>
+  // TODO: Support C++ `BlockDecl`s
   const auto *functionDecl = cast<FunctionDecl>(decl.getDeclContext());
 
   PresumedLoc declLoc = mgr.getPresumedLoc(decl.getLocation());
@@ -210,8 +211,12 @@ public:
     if (!declRefExpr)
       return true;
     const auto *namedDecl = cast<NamedDecl>(declRefExpr->getDecl());
+    // Only examine variables inside functions
+    if (!isa<FunctionDecl>(namedDecl->getDeclContext()))
+      return true;
     // llvm::errs() << "Assignment for `" << namedDecl->getDeclName() << "`\n";
     // s->dump();
+
     auto &parentMap = TheContext.getParentMapContext();
     auto *parentCompoundStmt = parentMap.getParents(*s)[0].get<CompoundStmt>();
     // Only record definitions within a continuing `CompoundStmt`
