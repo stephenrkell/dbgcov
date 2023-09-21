@@ -242,9 +242,52 @@ public:
     if (const auto *callee = s->getCallee()) {
       VISITOR_METHOD_PRINT(CallExpr.Callee, callee)
     }
-    // Arguments shouldn't be added at this level, as they may have a whole tree
-    // of multi-line computation, so we instead inspect them further by
-    // recursion
+
+    // Arguments shouldn't be examined for computation at this level, as they
+    // may have a whole tree of multi-line computation, so we instead inspect
+    // them further by recursion
+
+    // Mark variables used in call arguments as "may be defined" after it
+    for (const Expr *argument : s->arguments()) {
+      // Descend to `DeclRefExpr` within the argument
+      while (argument && !isa<DeclRefExpr>(argument)) {
+        // Check whether there are any children
+        if (argument->child_begin() == argument->child_end())
+          break;
+        // Only check the first child for simplicity (seems fine for most cases)
+        const Stmt *child = *argument->child_begin();
+        // Ignore non-`Expr` children
+        if (!isa<Expr>(child))
+          break;
+        argument = cast<Expr>(child);
+      }
+      if (!argument || !isa<DeclRefExpr>(argument))
+        continue;
+      const auto *declRefExpr = cast<DeclRefExpr>(argument);
+      const auto *namedDecl = cast<NamedDecl>(declRefExpr->getDecl());
+
+      // Only examine variables inside functions
+      if (!isa<FunctionDecl>(namedDecl->getDeclContext()))
+        return true;
+
+      auto &parentMap = TheContext.getParentMapContext();
+      auto *parentCompoundStmt = parentMap.getParents(*s)[0].get<CompoundStmt>();
+      // Only record definitions within a continuing `CompoundStmt`
+      if (!parentCompoundStmt)
+        return true;
+
+      // Debug info typically reflects variables as defined on the line _after_
+      // assignment, so we print the next line here.
+      PrintNextLine(llvm::outs(), s->getEndLoc(), TheRewriter.getSourceMgr());
+      llvm::outs() << "\t";
+      parentCompoundStmt->getEndLoc().print(llvm::outs(), TheRewriter.getSourceMgr());
+      llvm::outs() << "\t"
+                  << "MayBeDefined"
+                  << "\t";
+      PrintExtendedName(llvm::outs(), *namedDecl, TheRewriter.getSourceMgr());
+      llvm::outs() << "\n";
+    }
+
     return true;
   }
 
