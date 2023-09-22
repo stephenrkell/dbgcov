@@ -320,8 +320,19 @@ public:
       llvm::outs() << "FunctionDecl.Epilogue";
       llvm::outs() << "\n";
 
-      // Record parameter definition region
       for (const auto *param : s->parameters()) {
+        // Record parameter declaration scope
+        // Matches the definition region below, which uses the function body.
+        body->getBeginLoc().print(llvm::outs(), TheRewriter.getSourceMgr());
+        llvm::outs() << "\t";
+        body->getEndLoc().print(llvm::outs(), TheRewriter.getSourceMgr());
+        llvm::outs() << "\t"
+                     << "DeclScope"
+                     << "\t";
+        PrintExtendedName(llvm::outs(), *param, TheRewriter.getSourceMgr());
+        llvm::outs() << "\n";
+
+        // Record parameter definition region
         // Debug info typically reflects parameters as defined starting on the
         // line with the opening brace of the function body.
         body->getBeginLoc().print(llvm::outs(), TheRewriter.getSourceMgr());
@@ -338,26 +349,40 @@ public:
   }
 
   bool VisitVarDecl(VarDecl *s) {
+    // Only examine local variables inside functions
+    if (!isa<FunctionDecl>(s->getDeclContext()) || !s->isLocalVarDecl())
+      return true;
+
+    auto &parentMap = TheContext.getParentMapContext();
+    auto *parentDeclStmt = parentMap.getParents(*s)[0].get<DeclStmt>();
+    // `VarDecl` should be child of `DeclStmt`
+    assert(parentDeclStmt && "VarDecl not child of DeclStmt");
+    auto *parentStmt = parentMap.getParents(*parentDeclStmt)[0].get<Stmt>();
+    // Only examine variables within some kind of `Stmt`, such as a continuing
+    // `CompoundStmt` or blocks with associated declarations (e.g. `ForStmt`)
+    if (!parentStmt)
+      return true;
+
+    // Record variable declaration scope
+    // Treats the entire enclosing block as potential scope
+    // This allows for e.g. storage on the stack to match the whole block
+    // Note: We currently filter away stack coverage via the definition filter
+    parentStmt->getBeginLoc().print(llvm::outs(), TheRewriter.getSourceMgr());
+    llvm::outs() << "\t";
+    parentStmt->getEndLoc().print(llvm::outs(), TheRewriter.getSourceMgr());
+    llvm::outs() << "\t"
+                 << "DeclScope"
+                 << "\t";
+    PrintExtendedName(llvm::outs(), *s, TheRewriter.getSourceMgr());
+    llvm::outs() << "\n";
+
     // `VarDecl` has computation only for locals with an initialiser
     // TODO: Check C++ default initialisation cases
-    if (!s->isLocalVarDecl() || !s->hasInit())
+    if (!s->hasInit())
       return true;
     VISITOR_METHOD_PRINT(VarDecl, s)
 
     // Record variable definition region
-    // llvm::errs() << "VD for `" << s->getName() << "`\n"
-    //              << "  parentStmt:\n";
-    auto &parentMap = TheContext.getParentMapContext();
-    auto *parentDeclStmt = parentMap.getParents(*s)[0].get<DeclStmt>();
-    // `VarDecl` with initialiser should be child of `DeclStmt`
-    assert(parentDeclStmt && "VarDecl not child of DeclStmt");
-    auto *parentStmt = parentMap.getParents(*parentDeclStmt)[0].get<Stmt>();
-    // Record definitions within any kind of `Stmt`, such as a continuing
-    // `CompoundStmt` or blocks with associated declarations (e.g. `ForStmt`)
-    if (!parentStmt)
-      return true;
-    // parentStmt->dump();
-
     // Debug info typically reflects variables as defined on the line _after_
     // assignment, so we print the next line here.
     PrintNextLine(llvm::outs(), s->getEndLoc(), TheRewriter.getSourceMgr());
