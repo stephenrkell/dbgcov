@@ -265,9 +265,14 @@ public:
     // Arguments shouldn't be examined for computation at this level, as they
     // may have a whole tree of multi-line computation, so we instead inspect
     // them further by recursion
+    // llvm::errs() << "Call:\n";
+    // s->dump();
 
     // Mark variables used in call arguments as "may be defined" after it
+    // llvm::errs() << "Arguments: " << s->getNumArgs() << "\n";
     for (const Expr *argument : s->arguments()) {
+      // llvm::errs() << "Argument:\n";
+      // argument->dump();
       // Descend to `DeclRefExpr` within the argument
       while (argument && !isa<DeclRefExpr>(argument)) {
         // Check whether there are any children
@@ -275,6 +280,8 @@ public:
           break;
         // Only check the first child for simplicity (seems fine for most cases)
         const Stmt *child = *argument->child_begin();
+        // llvm::errs() << "Argument child:\n";
+        // child->dump();
         // Ignore non-`Expr` children
         if (!isa<Expr>(child))
           break;
@@ -284,16 +291,21 @@ public:
         continue;
       const auto *declRefExpr = cast<DeclRefExpr>(argument);
       const auto *namedDecl = cast<NamedDecl>(declRefExpr->getDecl());
+      // llvm::errs() << "Call arg referencing `" << namedDecl->getDeclName() << "`\n";
 
       // Only examine variables inside functions
-      if (!isa<FunctionDecl>(namedDecl->getDeclContext()))
-        return true;
+      if (!isa<FunctionDecl>(namedDecl->getDeclContext())) {
+        // llvm::errs() << "Not in function, abort\n";
+        continue;
+      }
 
       const auto *parentStmt = GetParentStmt(s, TheContext);
       // Only examine variables within some kind of `Stmt`, such as a continuing
       // `CompoundStmt` or blocks with associated declarations (e.g. `ForStmt`)
-      if (!parentStmt)
-        return true;
+      if (!parentStmt) {
+        // llvm::errs() << "No parent, abort\n";
+        continue;
+      }
 
       // Debug info typically reflects variables as defined on the line _after_
       // assignment, so we print the next line here.
