@@ -90,6 +90,25 @@ void PrintExtendedName(raw_ostream &stream, const NamedDecl &decl,
          << declLoc.getLine() << ", unit " << relMainFile;
 }
 
+template <typename NodeT>
+const Stmt *GetParentStmt(const NodeT *expr, ASTContext &ctx) {
+  const Stmt *parentStmt = nullptr;
+
+  // Look for the nearest `Stmt` ancestor
+  auto &parentMap = ctx.getParentMapContext();
+  auto parents = parentMap.getParents(*expr);
+  while (!parents.empty()) {
+    parentStmt = parents[0].template get<Stmt>();
+    // C is statement-oriented, so all `Expr`s are also `Stmt`s
+    // In this case, we only want `Stmt`s that are _not_ `Expr`s
+    if (parentStmt && !isa<Expr>(parentStmt))
+      break;
+    parents = parentMap.getParents(parents[0]);
+  }
+
+  return parentStmt;
+}
+
 class DbgCovASTVisitor : public RecursiveASTVisitor<DbgCovASTVisitor> {
 public:
   DbgCovASTVisitor(Rewriter &R, ASTContext &C) : TheRewriter(R), TheContext(C) {}
@@ -217,18 +236,18 @@ public:
     // llvm::errs() << "Assignment for `" << namedDecl->getDeclName() << "`\n";
     // s->dump();
 
-    auto &parentMap = TheContext.getParentMapContext();
-    auto *parentCompoundStmt = parentMap.getParents(*s)[0].get<CompoundStmt>();
-    // Only record definitions within a continuing `CompoundStmt`
-    if (!parentCompoundStmt)
+    const auto *parentStmt = GetParentStmt(s, TheContext);
+    // Only examine variables within some kind of `Stmt`, such as a continuing
+    // `CompoundStmt` or blocks with associated declarations (e.g. `ForStmt`)
+    if (!parentStmt)
       return true;
-    // parentCompoundStmt->dump();
+    // parentStmt->dump();
 
     // Debug info typically reflects variables as defined on the line _after_
     // assignment, so we print the next line here.
     PrintNextLine(llvm::outs(), s->getEndLoc(), TheRewriter.getSourceMgr());
     llvm::outs() << "\t";
-    parentCompoundStmt->getEndLoc().print(llvm::outs(), TheRewriter.getSourceMgr());
+    parentStmt->getEndLoc().print(llvm::outs(), TheRewriter.getSourceMgr());
     llvm::outs() << "\t"
                  << "MustBeDefined"
                  << "\t";
@@ -270,17 +289,17 @@ public:
       if (!isa<FunctionDecl>(namedDecl->getDeclContext()))
         return true;
 
-      auto &parentMap = TheContext.getParentMapContext();
-      auto *parentCompoundStmt = parentMap.getParents(*s)[0].get<CompoundStmt>();
-      // Only record definitions within a continuing `CompoundStmt`
-      if (!parentCompoundStmt)
+      const auto *parentStmt = GetParentStmt(s, TheContext);
+      // Only examine variables within some kind of `Stmt`, such as a continuing
+      // `CompoundStmt` or blocks with associated declarations (e.g. `ForStmt`)
+      if (!parentStmt)
         return true;
 
       // Debug info typically reflects variables as defined on the line _after_
       // assignment, so we print the next line here.
       PrintNextLine(llvm::outs(), s->getEndLoc(), TheRewriter.getSourceMgr());
       llvm::outs() << "\t";
-      parentCompoundStmt->getEndLoc().print(llvm::outs(), TheRewriter.getSourceMgr());
+      parentStmt->getEndLoc().print(llvm::outs(), TheRewriter.getSourceMgr());
       llvm::outs() << "\t"
                   << "MayBeDefined"
                   << "\t";
@@ -357,7 +376,7 @@ public:
     auto *parentDeclStmt = parentMap.getParents(*s)[0].get<DeclStmt>();
     // `VarDecl` should be child of `DeclStmt`
     assert(parentDeclStmt && "VarDecl not child of DeclStmt");
-    auto *parentStmt = parentMap.getParents(*parentDeclStmt)[0].get<Stmt>();
+    const auto *parentStmt = GetParentStmt(parentDeclStmt, TheContext);
     // Only examine variables within some kind of `Stmt`, such as a continuing
     // `CompoundStmt` or blocks with associated declarations (e.g. `ForStmt`)
     if (!parentStmt)
