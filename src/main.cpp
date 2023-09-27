@@ -283,12 +283,7 @@ public:
     }
 
     // Record variable definition region for assignment operations
-    const auto *declRefExpr = dyn_cast<DeclRefExpr>(s->getLHS());
-    // Only examine direct variable assignments
-    // Skip array subscripts, member access, etc.
-    if (!declRefExpr)
-      return true;
-    ReportDeclRefExprAsDefined(declRefExpr, s, "MustBeDefined");
+    ReportTreeAsDefined(s->getLHS(), s, "MustBeDefined");
 
     return true;
   }
