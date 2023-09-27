@@ -115,6 +115,35 @@ public:
     return parentStmt;
   }
 
+  void ReportDeclRefExprAsDefined(const DeclRefExpr *declRefExpr,
+                                  const Expr *exprForRegionStart,
+                                  const char *regionKind) {
+    const auto *namedDecl = cast<NamedDecl>(declRefExpr->getDecl());
+    // Only examine variables inside functions
+    if (!isa<FunctionDecl>(namedDecl->getDeclContext()))
+      return;
+    // llvm::errs() << "Report for `" << namedDecl->getDeclName() << "`\n";
+    // s->dump();
+
+    const auto *parentStmt = GetParentStmt(exprForRegionStart);
+    // Only examine variables within some kind of `Stmt`, such as a continuing
+    // `CompoundStmt` or blocks with associated declarations (e.g. `ForStmt`)
+    if (!parentStmt)
+      return;
+    // parentStmt->dump();
+
+    // Debug info typically reflects variables as defined on the line _after_
+    // assignment, so we print the next line here.
+    PrintNextLine(llvm::outs(), exprForRegionStart->getEndLoc());
+    llvm::outs() << "\t";
+    parentStmt->getEndLoc().print(llvm::outs(), TheRewriter.getSourceMgr());
+    llvm::outs() << "\t"
+                 << regionKind
+                 << "\t";
+    PrintExtendedName(llvm::outs(), *namedDecl);
+    llvm::outs() << "\n";
+  }
+
   // Nodes with standardised handling
 
   /* What can we "visit" using RecursiveASTVisitor?
@@ -233,30 +262,7 @@ public:
     // Skip array subscripts, member access, etc.
     if (!declRefExpr)
       return true;
-    const auto *namedDecl = cast<NamedDecl>(declRefExpr->getDecl());
-    // Only examine variables inside functions
-    if (!isa<FunctionDecl>(namedDecl->getDeclContext()))
-      return true;
-    // llvm::errs() << "Assignment for `" << namedDecl->getDeclName() << "`\n";
-    // s->dump();
-
-    const auto *parentStmt = GetParentStmt(s);
-    // Only examine variables within some kind of `Stmt`, such as a continuing
-    // `CompoundStmt` or blocks with associated declarations (e.g. `ForStmt`)
-    if (!parentStmt)
-      return true;
-    // parentStmt->dump();
-
-    // Debug info typically reflects variables as defined on the line _after_
-    // assignment, so we print the next line here.
-    PrintNextLine(llvm::outs(), s->getEndLoc());
-    llvm::outs() << "\t";
-    parentStmt->getEndLoc().print(llvm::outs(), TheRewriter.getSourceMgr());
-    llvm::outs() << "\t"
-                 << "MustBeDefined"
-                 << "\t";
-    PrintExtendedName(llvm::outs(), *namedDecl);
-    llvm::outs() << "\n";
+    ReportDeclRefExprAsDefined(declRefExpr, s, "MustBeDefined");
 
     return true;
   }
@@ -294,33 +300,7 @@ public:
       if (!argument || !isa<DeclRefExpr>(argument))
         continue;
       const auto *declRefExpr = cast<DeclRefExpr>(argument);
-      const auto *namedDecl = cast<NamedDecl>(declRefExpr->getDecl());
-      // llvm::errs() << "Call arg referencing `" << namedDecl->getDeclName() << "`\n";
-
-      // Only examine variables inside functions
-      if (!isa<FunctionDecl>(namedDecl->getDeclContext())) {
-        // llvm::errs() << "Not in function, abort\n";
-        continue;
-      }
-
-      const auto *parentStmt = GetParentStmt(s);
-      // Only examine variables within some kind of `Stmt`, such as a continuing
-      // `CompoundStmt` or blocks with associated declarations (e.g. `ForStmt`)
-      if (!parentStmt) {
-        // llvm::errs() << "No parent, abort\n";
-        continue;
-      }
-
-      // Debug info typically reflects variables as defined on the line _after_
-      // assignment, so we print the next line here.
-      PrintNextLine(llvm::outs(), s->getEndLoc());
-      llvm::outs() << "\t";
-      parentStmt->getEndLoc().print(llvm::outs(), TheRewriter.getSourceMgr());
-      llvm::outs() << "\t"
-                  << "MayBeDefined"
-                  << "\t";
-      PrintExtendedName(llvm::outs(), *namedDecl);
-      llvm::outs() << "\n";
+      ReportDeclRefExprAsDefined(declRefExpr, s, "MayBeDefined");
     }
 
     return true;
