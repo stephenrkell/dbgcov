@@ -412,9 +412,11 @@ public:
     PrintExtendedName(llvm::outs(), *s);
     llvm::outs() << "\n";
 
-    // `VarDecl` has computation only for locals with an initialiser
+    // `VarDecl` has computation only for
+    //   - automatic locals with an initialiser
+    //   - static locals
     // TODO: Check C++ default initialisation cases
-    if (!s->hasInit())
+    if (!s->isStaticLocal() && !s->hasInit())
       return true;
     VISITOR_METHOD_PRINT(VarDecl, s)
 
