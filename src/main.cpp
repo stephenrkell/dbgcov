@@ -22,6 +22,7 @@
 #include "clang/Tooling/Tooling.h"
 #include "clang/Tooling/CommonOptionsParser.h" // TODO: remove
 #include "llvm/ADT/SmallString.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
@@ -144,6 +145,25 @@ public:
     llvm::outs() << "\n";
   }
 
+  void ReportTreeAsDefined(const Expr *tree, const Expr *exprForRegionStart,
+                           const char *regionKind) {
+    SmallVector<const Stmt *, 8> workQueue;
+    // Find all `DeclRefExpr`s within `tree`
+    workQueue.push_back(tree);
+    while (!workQueue.empty()) {
+      const auto *node = workQueue.back();
+      workQueue.pop_back();
+      // Add any children to the work queue
+      for (const auto *child : node->children())
+        workQueue.push_back(child);
+      // Report `DeclRefExpr` if found
+      if (!isa<DeclRefExpr>(node))
+        continue;
+      const auto *declRefExpr = cast<DeclRefExpr>(node);
+      ReportDeclRefExprAsDefined(declRefExpr, exprForRegionStart, regionKind);
+    }
+  }
+
   // Nodes with standardised handling
 
   /* What can we "visit" using RecursiveASTVisitor?
@@ -255,6 +275,12 @@ public:
 
     if (!s->isAssignmentOp())
       return true;
+
+    // For pointer assignments, consider all right-hand side variables as
+    // address-taken and thus likely to be defined.
+    if (s->getType()->isPointerType()) {
+      ReportTreeAsDefined(s->getRHS(), s, "MayBeDefined");
+    }
 
     // Record variable definition region for assignment operations
     const auto *declRefExpr = dyn_cast<DeclRefExpr>(s->getLHS());
