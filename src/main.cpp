@@ -44,74 +44,78 @@ using std::make_unique;
 using llvm::make_unique;
 #endif
 
-void PrintNextLine(raw_ostream &stream, const SourceLocation &sLoc,
-                   const SourceManager &mgr) {
-  assert(sLoc.isFileID() && "Non-file location");
-  PresumedLoc pLoc = mgr.getPresumedLoc(sLoc);
-  assert(pLoc.isValid() && "Invalid location");
-  stream << pLoc.getFilename() << ":" << pLoc.getLine() + 1 << ":" << 0;
-}
-
-void PrintExtendedName(raw_ostream &stream, const NamedDecl &decl,
-                       const SourceManager &mgr) {
-  // The precise name format here must match `debuginfo-quality` so we can match
-  // data across both tools.
-  // <function>, <variable>, decl <file>:<line>, unit <file>
-  // TODO: Support C++ `BlockDecl`s
-  const auto *functionDecl = cast<FunctionDecl>(decl.getDeclContext());
-
-  PresumedLoc declLoc = mgr.getPresumedLoc(decl.getLocation());
-  assert(declLoc.isValid() && "Invalid decl location");
-
-  // This attempts to match the translation unit file name emitted in DWARF
-  // See `CGDebugInfo::createFile` for Clang's path handling approach
-  const auto mainFileID = mgr.getMainFileID();
-  const auto *mainFileEntry = mgr.getFileEntryForID(mainFileID);
-  SmallString<128> currentDirectory;
-  llvm::sys::fs::current_path(currentDirectory);
-  const auto mainFilePath = mainFileEntry->getName();
-  auto mainFileI = llvm::sys::path::begin(mainFilePath);
-  const auto mainFileE = llvm::sys::path::end(mainFilePath);
-  auto curDirI = llvm::sys::path::begin(currentDirectory);
-  const auto curDirE = llvm::sys::path::end(currentDirectory);
-  // Skip common path segments
-  while (curDirI != curDirE && *curDirI == *mainFileI)
-    ++curDirI, ++mainFileI;
-  SmallString<128> relMainFile;
-  while (mainFileI != mainFileE) {
-    llvm::sys::path::append(relMainFile, *mainFileI);
-    ++mainFileI;
-  }
-  // Remove file extension to avoid `.i` vs. `.c` match failures
-  llvm::sys::path::replace_extension(relMainFile, "");
-
-  stream << functionDecl->getDeclName() << ", " << decl.getDeclName()
-         << ", decl " << llvm::sys::path::filename(declLoc.getFilename()) << ":"
-         << declLoc.getLine() << ", unit " << relMainFile;
-}
-
-template <typename NodeT>
-const Stmt *GetParentStmt(const NodeT *expr, ASTContext &ctx) {
-  const Stmt *parentStmt = nullptr;
-
-  // Look for the nearest `Stmt` ancestor
-  auto &parentMap = ctx.getParentMapContext();
-  auto parents = parentMap.getParents(*expr);
-  while (!parents.empty()) {
-    parentStmt = parents[0].template get<Stmt>();
-    // C is statement-oriented, so all `Expr`s are also `Stmt`s
-    // In this case, we only want `Stmt`s that are _not_ `Expr`s
-    if (parentStmt && !isa<Expr>(parentStmt))
-      break;
-    parents = parentMap.getParents(parents[0]);
-  }
-
-  return parentStmt;
-}
-
 class DbgCovASTVisitor : public RecursiveASTVisitor<DbgCovASTVisitor> {
 public:
   DbgCovASTVisitor(Rewriter &R, ASTContext &C) : TheRewriter(R), TheContext(C) {}
+
+  // Utilities
+
+  void PrintNextLine(raw_ostream &stream, const SourceLocation &sLoc) {
+    const auto &mgr = TheRewriter.getSourceMgr();
+    assert(sLoc.isFileID() && "Non-file location");
+    PresumedLoc pLoc = mgr.getPresumedLoc(sLoc);
+    assert(pLoc.isValid() && "Invalid location");
+    stream << pLoc.getFilename() << ":" << pLoc.getLine() + 1 << ":" << 0;
+  }
+
+  void PrintExtendedName(raw_ostream &stream, const NamedDecl &decl) {
+    const auto &mgr = TheRewriter.getSourceMgr();
+    // TODO: Support C++ `BlockDecl`s
+    const auto *functionDecl = cast<FunctionDecl>(decl.getDeclContext());
+
+    PresumedLoc declLoc = mgr.getPresumedLoc(decl.getLocation());
+    assert(declLoc.isValid() && "Invalid decl location");
+
+    // This attempts to match the translation unit file name emitted in DWARF
+    // See `CGDebugInfo::createFile` for Clang's path handling approach
+    const auto mainFileID = mgr.getMainFileID();
+    const auto *mainFileEntry = mgr.getFileEntryForID(mainFileID);
+    SmallString<128> currentDirectory;
+    llvm::sys::fs::current_path(currentDirectory);
+    const auto mainFilePath = mainFileEntry->getName();
+    auto mainFileI = llvm::sys::path::begin(mainFilePath);
+    const auto mainFileE = llvm::sys::path::end(mainFilePath);
+    auto curDirI = llvm::sys::path::begin(currentDirectory);
+    const auto curDirE = llvm::sys::path::end(currentDirectory);
+    // Skip common path segments
+    while (curDirI != curDirE && *curDirI == *mainFileI)
+      ++curDirI, ++mainFileI;
+    SmallString<128> relMainFile;
+    while (mainFileI != mainFileE) {
+      llvm::sys::path::append(relMainFile, *mainFileI);
+      ++mainFileI;
+    }
+    // Remove file extension to avoid `.i` vs. `.c` match failures
+    llvm::sys::path::replace_extension(relMainFile, "");
+
+    // The precise name format here must match `debuginfo-quality` so we can match
+    // data across both tools.
+    // <function>, <variable>, decl <file>:<line>, unit <file>
+    stream << functionDecl->getDeclName() << ", " << decl.getDeclName()
+          << ", decl " << llvm::sys::path::filename(declLoc.getFilename()) << ":"
+          << declLoc.getLine() << ", unit " << relMainFile;
+  }
+
+  template <typename NodeT>
+  const Stmt *GetParentStmt(const NodeT *expr) {
+    const Stmt *parentStmt = nullptr;
+
+    // Look for the nearest `Stmt` ancestor
+    auto &parentMap = TheContext.getParentMapContext();
+    auto parents = parentMap.getParents(*expr);
+    while (!parents.empty()) {
+      parentStmt = parents[0].template get<Stmt>();
+      // C is statement-oriented, so all `Expr`s are also `Stmt`s
+      // In this case, we only want `Stmt`s that are _not_ `Expr`s
+      if (parentStmt && !isa<Expr>(parentStmt))
+        break;
+      parents = parentMap.getParents(parents[0]);
+    }
+
+    return parentStmt;
+  }
+
+  // Nodes with standardised handling
 
   /* What can we "visit" using RecursiveASTVisitor?
      - attributes or specific classes thereof
@@ -236,7 +240,7 @@ public:
     // llvm::errs() << "Assignment for `" << namedDecl->getDeclName() << "`\n";
     // s->dump();
 
-    const auto *parentStmt = GetParentStmt(s, TheContext);
+    const auto *parentStmt = GetParentStmt(s);
     // Only examine variables within some kind of `Stmt`, such as a continuing
     // `CompoundStmt` or blocks with associated declarations (e.g. `ForStmt`)
     if (!parentStmt)
@@ -245,13 +249,13 @@ public:
 
     // Debug info typically reflects variables as defined on the line _after_
     // assignment, so we print the next line here.
-    PrintNextLine(llvm::outs(), s->getEndLoc(), TheRewriter.getSourceMgr());
+    PrintNextLine(llvm::outs(), s->getEndLoc());
     llvm::outs() << "\t";
     parentStmt->getEndLoc().print(llvm::outs(), TheRewriter.getSourceMgr());
     llvm::outs() << "\t"
                  << "MustBeDefined"
                  << "\t";
-    PrintExtendedName(llvm::outs(), *namedDecl, TheRewriter.getSourceMgr());
+    PrintExtendedName(llvm::outs(), *namedDecl);
     llvm::outs() << "\n";
 
     return true;
@@ -299,7 +303,7 @@ public:
         continue;
       }
 
-      const auto *parentStmt = GetParentStmt(s, TheContext);
+      const auto *parentStmt = GetParentStmt(s);
       // Only examine variables within some kind of `Stmt`, such as a continuing
       // `CompoundStmt` or blocks with associated declarations (e.g. `ForStmt`)
       if (!parentStmt) {
@@ -309,13 +313,13 @@ public:
 
       // Debug info typically reflects variables as defined on the line _after_
       // assignment, so we print the next line here.
-      PrintNextLine(llvm::outs(), s->getEndLoc(), TheRewriter.getSourceMgr());
+      PrintNextLine(llvm::outs(), s->getEndLoc());
       llvm::outs() << "\t";
       parentStmt->getEndLoc().print(llvm::outs(), TheRewriter.getSourceMgr());
       llvm::outs() << "\t"
                   << "MayBeDefined"
                   << "\t";
-      PrintExtendedName(llvm::outs(), *namedDecl, TheRewriter.getSourceMgr());
+      PrintExtendedName(llvm::outs(), *namedDecl);
       llvm::outs() << "\n";
     }
 
@@ -360,7 +364,7 @@ public:
         llvm::outs() << "\t"
                      << "DeclScope"
                      << "\t";
-        PrintExtendedName(llvm::outs(), *param, TheRewriter.getSourceMgr());
+        PrintExtendedName(llvm::outs(), *param);
         llvm::outs() << "\n";
 
         // Record parameter definition region
@@ -372,7 +376,7 @@ public:
         llvm::outs() << "\t"
                      << "MustBeDefined"
                      << "\t";
-        PrintExtendedName(llvm::outs(), *param, TheRewriter.getSourceMgr());
+        PrintExtendedName(llvm::outs(), *param);
         llvm::outs() << "\n";
       }
     }
@@ -388,7 +392,7 @@ public:
     auto *parentDeclStmt = parentMap.getParents(*s)[0].get<DeclStmt>();
     // `VarDecl` should be child of `DeclStmt`
     assert(parentDeclStmt && "VarDecl not child of DeclStmt");
-    const auto *parentStmt = GetParentStmt(parentDeclStmt, TheContext);
+    const auto *parentStmt = GetParentStmt(parentDeclStmt);
     // Only examine variables within some kind of `Stmt`, such as a continuing
     // `CompoundStmt` or blocks with associated declarations (e.g. `ForStmt`)
     if (!parentStmt)
@@ -404,7 +408,7 @@ public:
     llvm::outs() << "\t"
                  << "DeclScope"
                  << "\t";
-    PrintExtendedName(llvm::outs(), *s, TheRewriter.getSourceMgr());
+    PrintExtendedName(llvm::outs(), *s);
     llvm::outs() << "\n";
 
     // `VarDecl` has computation only for locals with an initialiser
@@ -416,13 +420,13 @@ public:
     // Record variable definition region
     // Debug info typically reflects variables as defined on the line _after_
     // assignment, so we print the next line here.
-    PrintNextLine(llvm::outs(), s->getEndLoc(), TheRewriter.getSourceMgr());
+    PrintNextLine(llvm::outs(), s->getEndLoc());
     llvm::outs() << "\t";
     parentStmt->getEndLoc().print(llvm::outs(), TheRewriter.getSourceMgr());
     llvm::outs() << "\t"
                  << "MustBeDefined"
                  << "\t";
-    PrintExtendedName(llvm::outs(), *s, TheRewriter.getSourceMgr());
+    PrintExtendedName(llvm::outs(), *s);
     llvm::outs() << "\n";
 
     return true;
