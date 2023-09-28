@@ -53,15 +53,12 @@ public:
 
   // Utilities
 
-  std::string GetNextLine(const SourceLocation &sLoc) {
+  PresumedLoc GetPresumedLocation(const SourceLocation &sLoc) {
     const auto &mgr = TheRewriter.getSourceMgr();
     assert(sLoc.isFileID() && "Non-file location");
     PresumedLoc pLoc = mgr.getPresumedLoc(sLoc);
     assert(pLoc.isValid() && "Invalid location");
-    std::string strLoc;
-    raw_string_ostream stream(strLoc);
-    stream << pLoc.getFilename() << ":" << pLoc.getLine() + 1 << ":" << 0;
-    return strLoc;
+    return pLoc;
   }
 
   std::string GetExtendedName(const NamedDecl &decl) {
@@ -108,8 +105,17 @@ public:
   void PrintRegion(raw_ostream &stream, const SourceLocation &begin,
                    const SourceLocation &end, const Twine &kind,
                    const Twine &detail, bool beginNextLine) {
+    const auto &beginLoc = GetPresumedLocation(begin);
+    const auto &endLoc = GetPresumedLocation(end);
+    assert(beginLoc.getLine() <= endLoc.getLine());
+    // Ensure that we don't move the begin line past the end line for
+    // single-line regions (e.g. macro invocations)
+    if (beginLoc.getLine() == endLoc.getLine())
+      beginNextLine = false;
     if (beginNextLine)
-      stream << GetNextLine(begin);
+      stream << beginLoc.getFilename() << ":"
+             << beginLoc.getLine() + 1 << ":"
+             << 0;
     else
       begin.print(stream, TheRewriter.getSourceMgr());
     stream << "\t";
