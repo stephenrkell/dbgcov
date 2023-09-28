@@ -23,6 +23,7 @@
 #include "clang/Tooling/CommonOptionsParser.h" // TODO: remove
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/Twine.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
@@ -34,6 +35,7 @@
 using namespace clang;
 using namespace clang::driver;
 using namespace clang::tooling;
+using namespace llvm;
 #ifdef HAVE_DYNTYPEDNODE_IN_CLANG_NAMESPACE
 using clang::DynTypedNode;
 #else
@@ -51,15 +53,18 @@ public:
 
   // Utilities
 
-  void PrintNextLine(raw_ostream &stream, const SourceLocation &sLoc) {
+  std::string GetNextLine(const SourceLocation &sLoc) {
     const auto &mgr = TheRewriter.getSourceMgr();
     assert(sLoc.isFileID() && "Non-file location");
     PresumedLoc pLoc = mgr.getPresumedLoc(sLoc);
     assert(pLoc.isValid() && "Invalid location");
+    std::string strLoc;
+    raw_string_ostream stream(strLoc);
     stream << pLoc.getFilename() << ":" << pLoc.getLine() + 1 << ":" << 0;
+    return strLoc;
   }
 
-  void PrintExtendedName(raw_ostream &stream, const NamedDecl &decl) {
+  std::string GetExtendedName(const NamedDecl &decl) {
     const auto &mgr = TheRewriter.getSourceMgr();
     // TODO: Support C++ `BlockDecl`s
     const auto *functionDecl = cast<FunctionDecl>(decl.getDeclContext());
@@ -92,13 +97,27 @@ public:
     // The precise name format here must match `debuginfo-quality` so we can match
     // data across both tools.
     // <function>, <variable>, decl <file>:<line>, unit <file>
+    std::string name;
+    raw_string_ostream stream(name);
     stream << functionDecl->getDeclName() << ", " << decl.getDeclName()
-          << ", decl " << llvm::sys::path::filename(declLoc.getFilename()) << ":"
-          << declLoc.getLine() << ", unit " << relMainFile;
+           << ", decl " << llvm::sys::path::filename(declLoc.getFilename())
+           << ":" << declLoc.getLine() << ", unit " << relMainFile;
+    return name;
   }
 
-  template <typename NodeT>
-  const Stmt *GetParentStmt(const NodeT *expr) {
+  void PrintRegion(raw_ostream &stream, const SourceLocation &begin,
+                   const SourceLocation &end, const Twine &kind,
+                   const Twine &detail, bool beginNextLine) {
+    if (beginNextLine)
+      stream << GetNextLine(begin);
+    else
+      begin.print(stream, TheRewriter.getSourceMgr());
+    stream << "\t";
+    end.print(stream, TheRewriter.getSourceMgr());
+    stream << "\t" << kind << "\t" << detail << "\n";
+  }
+
+  template <typename NodeT> const Stmt *GetParentStmt(const NodeT *expr) {
     const Stmt *parentStmt = nullptr;
 
     // Look for the nearest `Stmt` ancestor
@@ -118,7 +137,7 @@ public:
 
   void ReportDeclRefExprAsDefined(const DeclRefExpr *declRefExpr,
                                   const Expr *exprForRegionStart,
-                                  const char *regionKind) {
+                                  const Twine &regionKind) {
     const auto *namedDecl = cast<NamedDecl>(declRefExpr->getDecl());
     // Only examine variables inside functions
     if (!isa<FunctionDecl>(namedDecl->getDeclContext()))
@@ -135,18 +154,14 @@ public:
 
     // Debug info typically reflects variables as defined on the line _after_
     // assignment, so we print the next line here.
-    PrintNextLine(llvm::outs(), exprForRegionStart->getEndLoc());
-    llvm::outs() << "\t";
-    parentStmt->getEndLoc().print(llvm::outs(), TheRewriter.getSourceMgr());
-    llvm::outs() << "\t"
-                 << regionKind
-                 << "\t";
-    PrintExtendedName(llvm::outs(), *namedDecl);
-    llvm::outs() << "\n";
+    PrintRegion(llvm::outs(), exprForRegionStart->getEndLoc(),
+                parentStmt->getEndLoc(), regionKind,
+                GetExtendedName(*namedDecl),
+                /* beginNextLine = */ true);
   }
 
   void ReportTreeAsDefined(const Expr *tree, const Expr *exprForRegionStart,
-                           const char *regionKind) {
+                           const Twine &regionKind) {
     SmallVector<const Stmt *, 8> workQueue;
     // Find all `DeclRefExpr`s within `tree`
     workQueue.push_back(tree);
@@ -207,15 +222,9 @@ public:
   v(GotoStmt) \
   v(ReturnStmt)
 
-#define VISITOR_METHOD_PRINT(type, var) \
-    var->getBeginLoc().print(llvm::outs(), TheRewriter.getSourceMgr()); \
-    llvm::outs() << "\t"; \
-    var->getEndLoc().print(llvm::outs(), TheRewriter.getSourceMgr()); \
-    llvm::outs() << "\t"; \
-    llvm::outs() << "Computation"; \
-    llvm::outs() << "\t"; \
-    llvm::outs() << #type; \
-    llvm::outs() << "\n";
+#define VISITOR_METHOD_PRINT(type, var)                                        \
+  PrintRegion(llvm::outs(), var->getBeginLoc(), var->getEndLoc(),              \
+              "Computation", #type, /* beginNextLine = */ false);
 
 #define VISITOR_METHOD(type) \
   bool Visit ## type (type *s) { \
@@ -337,48 +346,28 @@ public:
     // Debug info associates the function prologue / epilogue with these lines
     if (const auto *body = dyn_cast_if_present<CompoundStmt>(s->getBody())) {
       // Prologue
-      body->getBeginLoc().print(llvm::outs(), TheRewriter.getSourceMgr());
-      llvm::outs() << "\t";
-      body->getBeginLoc().print(llvm::outs(), TheRewriter.getSourceMgr());
-      llvm::outs() << "\t";
-      llvm::outs() << "Computation";
-      llvm::outs() << "\t";
-      llvm::outs() << "FunctionDecl.Prologue";
-      llvm::outs() << "\n";
+      PrintRegion(llvm::outs(), body->getBeginLoc(), body->getBeginLoc(),
+                  "Computation", "FunctionDecl.Prologue",
+                  /* beginNextLine = */ false);
 
       // Epilogue
-      body->getEndLoc().print(llvm::outs(), TheRewriter.getSourceMgr());
-      llvm::outs() << "\t";
-      body->getEndLoc().print(llvm::outs(), TheRewriter.getSourceMgr());
-      llvm::outs() << "\t";
-      llvm::outs() << "Computation";
-      llvm::outs() << "\t";
-      llvm::outs() << "FunctionDecl.Epilogue";
-      llvm::outs() << "\n";
+      PrintRegion(llvm::outs(), body->getEndLoc(), body->getEndLoc(),
+                  "Computation", "FunctionDecl.Epilogue",
+                  /* beginNextLine = */ false);
 
       for (const auto *param : s->parameters()) {
         // Record parameter declaration scope
         // Matches the definition region below, which uses the function body.
-        body->getBeginLoc().print(llvm::outs(), TheRewriter.getSourceMgr());
-        llvm::outs() << "\t";
-        body->getEndLoc().print(llvm::outs(), TheRewriter.getSourceMgr());
-        llvm::outs() << "\t"
-                     << "DeclScope"
-                     << "\t";
-        PrintExtendedName(llvm::outs(), *param);
-        llvm::outs() << "\n";
+        PrintRegion(llvm::outs(), body->getBeginLoc(), body->getEndLoc(),
+                    "DeclScope", GetExtendedName(*param),
+                    /* beginNextLine = */ false);
 
         // Record parameter definition region
         // Debug info typically reflects parameters as defined starting on the
         // line with the opening brace of the function body.
-        body->getBeginLoc().print(llvm::outs(), TheRewriter.getSourceMgr());
-        llvm::outs() << "\t";
-        body->getEndLoc().print(llvm::outs(), TheRewriter.getSourceMgr());
-        llvm::outs() << "\t"
-                     << "MustBeDefined"
-                     << "\t";
-        PrintExtendedName(llvm::outs(), *param);
-        llvm::outs() << "\n";
+        PrintRegion(llvm::outs(), body->getBeginLoc(), body->getEndLoc(),
+                    "MustBeDefined", GetExtendedName(*param),
+                    /* beginNextLine = */ false);
       }
     }
     return true;
@@ -403,14 +392,9 @@ public:
     // Treats the entire enclosing block as potential scope
     // This allows for e.g. storage on the stack to match the whole block
     // Note: We currently filter away stack coverage via the definition filter
-    parentStmt->getBeginLoc().print(llvm::outs(), TheRewriter.getSourceMgr());
-    llvm::outs() << "\t";
-    parentStmt->getEndLoc().print(llvm::outs(), TheRewriter.getSourceMgr());
-    llvm::outs() << "\t"
-                 << "DeclScope"
-                 << "\t";
-    PrintExtendedName(llvm::outs(), *s);
-    llvm::outs() << "\n";
+    PrintRegion(llvm::outs(), parentStmt->getBeginLoc(),
+                parentStmt->getEndLoc(), "DeclScope", GetExtendedName(*s),
+                /* beginNextLine = */ false);
 
     // `VarDecl` has computation only for
     //   - automatic locals with an initialiser
@@ -423,14 +407,9 @@ public:
     // Record variable definition region
     // Debug info typically reflects variables as defined on the line _after_
     // assignment, so we print the next line here.
-    PrintNextLine(llvm::outs(), s->getEndLoc());
-    llvm::outs() << "\t";
-    parentStmt->getEndLoc().print(llvm::outs(), TheRewriter.getSourceMgr());
-    llvm::outs() << "\t"
-                 << "MustBeDefined"
-                 << "\t";
-    PrintExtendedName(llvm::outs(), *s);
-    llvm::outs() << "\n";
+    PrintRegion(llvm::outs(), s->getEndLoc(), parentStmt->getEndLoc(),
+                "MustBeDefined", GetExtendedName(*s),
+                /* beginNextLine = */ true);
 
     return true;
   }
