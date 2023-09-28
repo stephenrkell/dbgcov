@@ -159,7 +159,8 @@ public:
 
   void ReportDeclRefExprAsDefined(const DeclRefExpr *declRefExpr,
                                   const Stmt *stmtForRegionStart,
-                                  const Twine &regionKind) {
+                                  const Twine &regionKind,
+                                  bool beginNextLine) {
     const auto *namedDecl = cast<NamedDecl>(declRefExpr->getDecl());
     // Only examine variables inside functions
     if (!isa<FunctionDecl>(namedDecl->getDeclContext()))
@@ -174,16 +175,13 @@ public:
       return;
     // parentStmt->dump();
 
-    // Debug info typically reflects variables as defined on the line _after_
-    // assignment, so we print the next line here.
     PrintRegion(llvm::outs(), stmtForRegionStart->getEndLoc(),
                 parentStmt->getEndLoc(), regionKind,
-                GetExtendedName(*namedDecl),
-                /* beginNextLine = */ true);
+                GetExtendedName(*namedDecl), beginNextLine);
   }
 
   void ReportTreeAsDefined(const Expr *tree, const Stmt *stmtForRegionStart,
-                           const Twine &regionKind) {
+                           const Twine &regionKind, bool beginNextLine) {
     SmallVector<const Stmt *, 8> workQueue;
     // Find all `DeclRefExpr`s within `tree`
     workQueue.push_back(tree);
@@ -197,7 +195,8 @@ public:
       if (!isa<DeclRefExpr>(node))
         continue;
       const auto *declRefExpr = cast<DeclRefExpr>(node);
-      ReportDeclRefExprAsDefined(declRefExpr, stmtForRegionStart, regionKind);
+      ReportDeclRefExprAsDefined(declRefExpr, stmtForRegionStart, regionKind,
+                                 beginNextLine);
     }
   }
 
@@ -308,10 +307,14 @@ public:
       return true;
 
     // Consider right-hand side variables as likely to be defined
-    ReportTreeAsDefined(s->getRHS(), s, "MayBeDefined");
+    // as of the current line
+    ReportTreeAsDefined(s->getRHS(), s, "MayBeDefined",
+                        /* beginNextLine = */ false);
 
     // Record variable definition region for assignment operations
-    ReportTreeAsDefined(s->getLHS(), s, "MustBeDefined");
+    // on the next line _after_ assignment
+    ReportTreeAsDefined(s->getLHS(), s, "MustBeDefined",
+                        /* beginNextLine = */ true);
 
     return true;
   }
@@ -349,7 +352,10 @@ public:
       if (!argument || !isa<DeclRefExpr>(argument))
         continue;
       const auto *declRefExpr = cast<DeclRefExpr>(argument);
-      ReportDeclRefExprAsDefined(declRefExpr, s, "MayBeDefined");
+      // When referencing existing variables like this, assume storage may
+      // already exist on the current line.
+      ReportDeclRefExprAsDefined(declRefExpr, s, "MayBeDefined",
+                                 /* beginNextLine = */ false);
     }
 
     return true;
@@ -431,8 +437,10 @@ public:
                 /* beginNextLine = */ true);
 
     // Consider initialiser variables as likely to be defined
+    // as of the current line
     if (s->hasInit())
-      ReportTreeAsDefined(s->getInit(), parentDeclStmt, "MayBeDefined");
+      ReportTreeAsDefined(s->getInit(), parentDeclStmt, "MayBeDefined",
+                          /* beginNextLine = */ false);
 
     return true;
   }
