@@ -158,7 +158,7 @@ public:
   }
 
   void ReportDeclRefExprAsDefined(const DeclRefExpr *declRefExpr,
-                                  const Expr *exprForRegionStart,
+                                  const Stmt *stmtForRegionStart,
                                   const Twine &regionKind) {
     const auto *namedDecl = cast<NamedDecl>(declRefExpr->getDecl());
     // Only examine variables inside functions
@@ -167,7 +167,7 @@ public:
     // llvm::errs() << "Report for `" << namedDecl->getDeclName() << "`\n";
     // s->dump();
 
-    const auto *parentStmt = GetParentStmt(exprForRegionStart);
+    const auto *parentStmt = GetParentStmt(stmtForRegionStart);
     // Only examine variables within some kind of `Stmt`, such as a continuing
     // `CompoundStmt` or blocks with associated declarations (e.g. `ForStmt`)
     if (!parentStmt)
@@ -176,13 +176,13 @@ public:
 
     // Debug info typically reflects variables as defined on the line _after_
     // assignment, so we print the next line here.
-    PrintRegion(llvm::outs(), exprForRegionStart->getEndLoc(),
+    PrintRegion(llvm::outs(), stmtForRegionStart->getEndLoc(),
                 parentStmt->getEndLoc(), regionKind,
                 GetExtendedName(*namedDecl),
                 /* beginNextLine = */ true);
   }
 
-  void ReportTreeAsDefined(const Expr *tree, const Expr *exprForRegionStart,
+  void ReportTreeAsDefined(const Expr *tree, const Stmt *stmtForRegionStart,
                            const Twine &regionKind) {
     SmallVector<const Stmt *, 8> workQueue;
     // Find all `DeclRefExpr`s within `tree`
@@ -197,7 +197,7 @@ public:
       if (!isa<DeclRefExpr>(node))
         continue;
       const auto *declRefExpr = cast<DeclRefExpr>(node);
-      ReportDeclRefExprAsDefined(declRefExpr, exprForRegionStart, regionKind);
+      ReportDeclRefExprAsDefined(declRefExpr, stmtForRegionStart, regionKind);
     }
   }
 
@@ -307,11 +307,8 @@ public:
     if (!s->isAssignmentOp())
       return true;
 
-    // For pointer assignments, consider all right-hand side variables as
-    // address-taken and thus likely to be defined.
-    if (s->getType()->isPointerType()) {
-      ReportTreeAsDefined(s->getRHS(), s, "MayBeDefined");
-    }
+    // Consider right-hand side variables as likely to be defined
+    ReportTreeAsDefined(s->getRHS(), s, "MayBeDefined");
 
     // Record variable definition region for assignment operations
     ReportTreeAsDefined(s->getLHS(), s, "MustBeDefined");
@@ -432,6 +429,10 @@ public:
     PrintRegion(llvm::outs(), s->getEndLoc(), parentStmt->getEndLoc(),
                 "MustBeDefined", GetExtendedName(*s),
                 /* beginNextLine = */ true);
+
+    // Consider initialiser variables as likely to be defined
+    if (s->hasInit())
+      ReportTreeAsDefined(s->getInit(), parentDeclStmt, "MayBeDefined");
 
     return true;
   }
