@@ -1,3 +1,4 @@
+#include <cstring>
 #include <sstream>
 #include <string>
 #ifdef USE_STD_UNIQUE_PTR
@@ -107,6 +108,21 @@ public:
                    const Twine &detail, bool beginNextLine) {
     const auto &beginLoc = GetPresumedLocation(begin);
     const auto &endLoc = GetPresumedLocation(end);
+    if (strcmp(beginLoc.getFilename(), endLoc.getFilename())) {
+      llvm::errs() << "Warning: Ignoring multi-file region\n";
+      begin.print(llvm::errs(), TheRewriter.getSourceMgr());
+      llvm::errs() << "\n";
+      end.print(llvm::errs(), TheRewriter.getSourceMgr());
+      llvm::errs() << "\n" << kind << "\n" << detail << "\n";
+      return;
+    }
+    if (beginLoc.getLine() > endLoc.getLine()) {
+      llvm::errs() << "Error: Invalid region (begin after end)\n";
+      begin.print(llvm::errs(), TheRewriter.getSourceMgr());
+      llvm::errs() << "\n";
+      end.print(llvm::errs(), TheRewriter.getSourceMgr());
+      llvm::errs() << "\n" << kind << "\n" << detail << "\n";
+    }
     assert(beginLoc.getLine() <= endLoc.getLine());
     // Ensure that we don't move the begin line past the end line for
     // single-line regions (e.g. macro invocations)
