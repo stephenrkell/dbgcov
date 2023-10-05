@@ -104,7 +104,10 @@ public:
   }
 
   void PrintLocation(raw_ostream &stream, const PresumedLoc &loc) {
-    stream << loc.getFilename() << ":" << loc.getLine() << ":"
+    SmallString<128> filePath(loc.getFilename());
+    std::error_code error = llvm::sys::fs::make_absolute(filePath);
+    assert(!error && "Unable to make absolute path");
+    stream << filePath << ":" << loc.getLine() << ":"
            << loc.getColumn();
   }
 
