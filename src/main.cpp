@@ -13,7 +13,6 @@
 #include "clang/AST/ParentMapContext.h"
 #endif
 #include "clang/AST/RecursiveASTVisitor.h"
-#include "clang/Basic/FileEntry.h"
 #include "clang/Basic/SourceLocation.h"
 #include "clang/Basic/SourceManager.h"
 #include "clang/Frontend/ASTConsumers.h"
@@ -70,36 +69,14 @@ public:
     PresumedLoc declLoc = mgr.getPresumedLoc(decl.getLocation());
     assert(declLoc.isValid() && "Invalid decl location");
 
-    // This attempts to match the translation unit file name emitted in DWARF
-    // See `CGDebugInfo::createFile` for Clang's path handling approach
-    const auto mainFileID = mgr.getMainFileID();
-    const auto *mainFileEntry = mgr.getFileEntryForID(mainFileID);
-    SmallString<128> currentDirectory;
-    llvm::sys::fs::current_path(currentDirectory);
-    const auto mainFilePath = mainFileEntry->getName();
-    auto mainFileI = llvm::sys::path::begin(mainFilePath);
-    const auto mainFileE = llvm::sys::path::end(mainFilePath);
-    auto curDirI = llvm::sys::path::begin(currentDirectory);
-    const auto curDirE = llvm::sys::path::end(currentDirectory);
-    // Skip common path segments
-    while (curDirI != curDirE && *curDirI == *mainFileI)
-      ++curDirI, ++mainFileI;
-    SmallString<128> relMainFile;
-    while (mainFileI != mainFileE) {
-      llvm::sys::path::append(relMainFile, *mainFileI);
-      ++mainFileI;
-    }
-    // Remove file extension to avoid `.i` vs. `.c` match failures
-    llvm::sys::path::replace_extension(relMainFile, "");
-
     // The precise name format here must match `debuginfo-quality` so we can match
     // data across both tools.
-    // <function>, <variable>, decl <file>:<line>, unit <file>
+    // <function>, <variable>, decl <file>:<line>
     std::string name;
     raw_string_ostream stream(name);
     stream << functionDecl->getDeclName() << ", " << decl.getDeclName()
            << ", decl " << llvm::sys::path::filename(declLoc.getFilename())
-           << ":" << declLoc.getLine() << ", unit " << relMainFile;
+           << ":" << declLoc.getLine();
     return name;
   }
 
