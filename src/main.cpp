@@ -103,6 +103,11 @@ public:
     return name;
   }
 
+  void PrintLocation(raw_ostream &stream, const PresumedLoc &loc) {
+    stream << loc.getFilename() << ":" << loc.getLine() << ":"
+           << loc.getColumn();
+  }
+
   void PrintRegion(raw_ostream &stream, const SourceLocation &begin,
                    const SourceLocation &end, const Twine &kind,
                    const Twine &detail, bool beginNextLine) {
@@ -110,17 +115,17 @@ public:
     const auto &endLoc = GetPresumedLocation(end);
     if (strcmp(beginLoc.getFilename(), endLoc.getFilename())) {
       llvm::errs() << "Warning: Ignoring multi-file region\n";
-      begin.print(llvm::errs(), TheRewriter.getSourceMgr());
+      PrintLocation(llvm::errs(), beginLoc);
       llvm::errs() << "\n";
-      end.print(llvm::errs(), TheRewriter.getSourceMgr());
+      PrintLocation(llvm::errs(), endLoc);
       llvm::errs() << "\n" << kind << "\n" << detail << "\n";
       return;
     }
     if (beginLoc.getLine() > endLoc.getLine()) {
       llvm::errs() << "Error: Invalid region (begin after end)\n";
-      begin.print(llvm::errs(), TheRewriter.getSourceMgr());
+      PrintLocation(llvm::errs(), beginLoc);
       llvm::errs() << "\n";
-      end.print(llvm::errs(), TheRewriter.getSourceMgr());
+      PrintLocation(llvm::errs(), endLoc);
       llvm::errs() << "\n" << kind << "\n" << detail << "\n";
     }
     assert(beginLoc.getLine() <= endLoc.getLine());
@@ -128,14 +133,16 @@ public:
     // single-line regions (e.g. macro invocations)
     if (beginLoc.getLine() == endLoc.getLine())
       beginNextLine = false;
-    if (beginNextLine)
-      stream << beginLoc.getFilename() << ":"
-             << beginLoc.getLine() + 1 << ":"
-             << 0;
-    else
-      begin.print(stream, TheRewriter.getSourceMgr());
+    if (beginNextLine) {
+      PrintLocation(stream,
+                    PresumedLoc(beginLoc.getFilename(), beginLoc.getFileID(),
+                                beginLoc.getLine() + 1, 0,
+                                beginLoc.getIncludeLoc()));
+    } else {
+      PrintLocation(stream, beginLoc);
+    }
     stream << "\t";
-    end.print(stream, TheRewriter.getSourceMgr());
+    PrintLocation(stream, endLoc);
     stream << "\t" << kind << "\t" << detail << "\n";
   }
 
