@@ -287,6 +287,23 @@ public:
 
   // Some nodes require customised handling depending on the data they contain
 
+  bool VisitAsmStmt(AsmStmt *s) {
+    // Adapts the logic of the `BinaryOperator` case below
+    // to work for inline assembly.
+
+    for (const auto *input : s->inputs()) {
+      ReportTreeAsDefined(input, s, "MayBeDefined",
+                          /* beginNextLine = */ false);
+    }
+
+    for (const auto *output : s->outputs()) {
+      ReportTreeAsDefined(output, s, "MustBeDefined",
+                          /* beginNextLine = */ true);
+    }
+
+    return true;
+  }
+
   bool VisitBinaryOperator(BinaryOperator *s) {
     VISITOR_METHOD_PRINT(BinaryOperator, s)
 
