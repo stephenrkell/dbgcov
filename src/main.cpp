@@ -425,20 +425,24 @@ public:
                 parentStmt->getEndLoc(), "DeclScope", GetExtendedName(*s),
                 /* beginNextLine = */ false);
 
-    // `VarDecl` has computation only for
-    //   - automatic locals with an initialiser
-    //   - static locals
     // TODO: Check C++ default initialisation cases
-    if (!s->isStaticLocal() && !s->hasInit())
-      return true;
-    VISITOR_METHOD_PRINT(VarDecl, s)
+
+    // `VarDecl` has computation only for automatic locals with an initialiser
+    // Static locals _do not_ have computation (even with an initialiser), as
+    // their "initialisation time" occurs outside the function.
+    if (s->hasInit() && !s->isStaticLocal())
+      VISITOR_METHOD_PRINT(VarDecl, s)
 
     // Record variable definition region
     // Debug info typically reflects variables as defined on the line _after_
     // assignment, so we print the next line here.
-    PrintRegion(llvm::outs(), s->getEndLoc(), parentStmt->getEndLoc(),
-                "MustBeDefined", GetExtendedName(*s),
-                /* beginNextLine = */ true);
+    // Multiple cases are considered as defined:
+    //   - automatic locals with an initialiser
+    //   - static locals (empty initialised when no initialiser present)
+    if (s->hasInit() || s->isStaticLocal())
+      PrintRegion(llvm::outs(), s->getEndLoc(), parentStmt->getEndLoc(),
+                  "MustBeDefined", GetExtendedName(*s),
+                  /* beginNextLine = */ true);
 
     // Consider initialiser variables as likely to be defined
     // as of the current line
