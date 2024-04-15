@@ -1,0 +1,18 @@
+# To use this file, rename it to `config.mk` and edit paths below as needed
+
+# These are for recent-ish LLVM in preference to classic LLVM 8
+# ... ideally we would probe for the need for these using a configure script
+CXXFLAGS += \
+	-DHAVE_CLANG_AST_PARENTMAPCONTEXT_H \
+	-DUSE_STD_UNIQUE_PTR \
+	-DHAVE_DYNTYPEDNODE_IN_CLANG_NAMESPACE \
+	-DHAVE_COMMONOPTIONSPARSER_CREATE
+# Add extra include directories since we haven't installed
+CXXFLAGS += \
+	-I PATH_TO_LLVM_SRC/clang/include \
+	-I PATH_TO_LLVM_SRC/builds/BUILD_DIRECTORY/tools/clang/include
+export CXXFLAGS
+
+# Supply `llvm-config` path which will be used to find LLVM libraries
+LLVM_CONFIG := PATH_TO_LLVM_SRC/builds/BUILD_DIRECTORY/bin/llvm-config
+export LLVM_CONFIG

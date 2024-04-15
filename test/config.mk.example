@@ -1,0 +1,16 @@
+# To use this file, rename it to `config.mk` and edit paths below as needed
+
+# Use actual GCC (not a Clang symlink) when executing `dbgcov` because it
+# relies on the GCC-only `wrapper` option
+CC := gcc-13
+export CC
+CXX := g++-13
+export CXX
+
+# GCC (invoked as `cpp-13`) needs to know the macOS-specific system header path
+# CFLAGS += \
+#   --sysroot \
+# 	/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk
+# Enable debug info
+CFLAGS += -g
+export CFLAGS
