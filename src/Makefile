@@ -8,6 +8,7 @@ default: dbgcov dbgcov-tool
 
 CXX_OBJS := $(patsubst %.cpp,%.o,$(wildcard *.cpp))
 
+# This list occasionally needs updates when LLVM libraries are reorganised
 dbgcov-tool: LDLIBS += \
         -lclangAST \
         -lclangASTMatchers \
