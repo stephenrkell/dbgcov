@@ -1,9 +1,11 @@
 ## Quick start
 
+```
 git submodule update --init --recursive # get toolsub submodule
 make -C contrib                         # build toolsub submodule
 make                                    # build the dbgcov tool
 make -C test/hello hello.i              # builds hello.i.dbgcov
+```
 
 ## Usage
 
