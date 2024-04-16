@@ -37,6 +37,10 @@ dbgcov-tool: LDLIBS += \
 # Comment this out if using an earlier version
 dbgcov-tool: LDLIBS += \
         -lclangSupport
+# LLVM 18 and later need clangAPINotes
+# Comment this out if using an earlier version
+dbgcov-tool: LDLIBS += \
+        -lclangAPINotes
 
 # LLVM 18 is known to work (and includes the preprocessor fix)
 # See https://github.com/llvm/llvm-project/commit/241cceb9af844ef7d7a87124407a04b0a64991fe
