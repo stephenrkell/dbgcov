@@ -47,6 +47,13 @@ using std::make_unique;
 using llvm::make_unique;
 #endif
 
+// `dyn_cast_if_present` added in LLVM 15, replaces `dyn_cast_or_null`
+#ifdef HAVE_DYN_CAST_IF_PRESENT
+#define dyn_cast_if_present dyn_cast_if_present
+#else
+#define dyn_cast_if_present dyn_cast_or_null
+#endif
+
 class DbgCovASTVisitor : public RecursiveASTVisitor<DbgCovASTVisitor> {
 public:
   DbgCovASTVisitor(Rewriter &R, ASTContext &C) : TheRewriter(R), TheContext(C) {}
