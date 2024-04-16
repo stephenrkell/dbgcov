@@ -38,7 +38,9 @@ dbgcov-tool: LDLIBS += \
 dbgcov-tool: LDLIBS += \
         -lclangSupport
 
-LLVM_CONFIG ?= llvm-config-8
+# LLVM 18 is known to work (and includes the preprocessor fix)
+# See https://github.com/llvm/llvm-project/commit/241cceb9af844ef7d7a87124407a04b0a64991fe
+LLVM_CONFIG ?= llvm-config-18
 
 #$(CXX_OBJS): CXX := clang
 $(CXX_OBJS): CXXFLAGS += -std=c++14 -fPIC -g `$(LLVM_CONFIG) --cxxflags` -UNDEBUG
