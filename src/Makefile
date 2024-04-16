@@ -21,7 +21,6 @@ dbgcov-tool: LDLIBS += \
         -lclangLex \
         -lclangParse \
         -lclangSema \
-        -lclangSupport \
         -lclangEdit \
         -lclangRewrite \
         -lclangRewriteFrontend \
@@ -34,6 +33,10 @@ dbgcov-tool: LDLIBS += \
         -lclangToolingCore \
         -lclangTooling \
         -lclangFormat
+# LLVM 15 and later need clangSupport
+# Comment this out if using an earlier version
+dbgcov-tool: LDLIBS += \
+        -lclangSupport
 
 LLVM_CONFIG ?= llvm-config-8
 
