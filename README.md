@@ -34,7 +34,8 @@ to the compiler flags used.
 
 For some build system and compiler combinations, the `-save-temps` flag is also
 needed to ensure a preprocessing step occurs as separate external program
-execution that can then be successfully redirected through `dbgcov-tool`.
+execution which saves preprocessing results to a file that can then be
+successfully redirected through `dbgcov-tool`.
 
 ## LLVM compatibility
 
