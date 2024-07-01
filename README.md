@@ -37,6 +37,13 @@ needed to ensure a preprocessing step occurs as separate external program
 execution which saves preprocessing results to a file that can then be
 successfully redirected through `dbgcov-tool`.
 
+## Source language compatibility
+
+At this time, `dbgcov` only supports analysing C source files.
+
+In particular, various C++ features are known to be missing from the analysis,
+so C++ source files are not supported as the results are likely to be erroneous.
+
 ## LLVM compatibility
 
 The `dbgcov-tool` binary produced in the `src` directory makes use of Clang
