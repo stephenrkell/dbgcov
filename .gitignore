@@ -10,3 +10,9 @@ src/dbgcov-tool
 src/dump
 src/*.ii
 test/hello/hello
+test/hello/hello.ast
+test/hello/hello.ii
+test/hello/hello.o
+test/hello/hello.s
+config.mk
+*.dbgcov

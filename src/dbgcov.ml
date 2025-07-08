@@ -1,5 +1,5 @@
 (* dbgcov.ml -- a simple CIL driver that can be used in place of the C preprocessor,
- *              but generates information about expected debug info coverage.
+ *              but also generates information about expected debug info coverage.
  *
  * Stephen Kell <stephen.kell@kcl.ac.uk>
  * Copyright 2023 King's College London
